@@ -21,8 +21,8 @@ class MammographyPlugin(ModalityPlugin):
     """Плагин для работы с маммографией"""
     
     def __init__(self):
-        self.density = "B"  # По умолчанию плотность B
-        self.conclusion = "норма"  # По умолчанию норма
+        self.density = "B"  
+        self.conclusion = "норма"  
         
         # Тексты плотности для замены
         self.density_texts = {

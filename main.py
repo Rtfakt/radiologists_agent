@@ -29,7 +29,7 @@ def load_plugins() -> List[ModalityPlugin]:
             continue
         
         try:
-            # Динамический импорт плагина
+            # Динамический импорт плагина 
             spec = importlib.util.spec_from_file_location(
                 f"plugin_{plugin_dir.name}", 
                 plugin_file
