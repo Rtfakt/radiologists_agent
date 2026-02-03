@@ -57,9 +57,28 @@ class MainWindow(QMainWindow):
         title.setStyleSheet("font-weight: bold; font-size: 14px;")
         layout.addWidget(title)
         
-        # Создаем кнопки для каждого плагина горизонтально
-        self.plugin_buttons = []
+        # Кнопка «Рентген» (плагин конструктора рентгеновских исследований)
+        self._xray_plugin = next(
+            (p for p in self.plugins if p.get_name() == "Рентген"),
+            None,
+        )
+        if self._xray_plugin is not None:
+            btn_rentgen = QPushButton("Рентген")
+            btn_rentgen.setMinimumHeight(40)
+            btn_rentgen.setMinimumWidth(150)
+            btn_rentgen.setToolTip(self._xray_plugin.get_description())
+            btn_rentgen.clicked.connect(
+                lambda checked: self._on_plugin_selected(self._xray_plugin)
+            )
+            layout.addWidget(btn_rentgen)
+            self.plugin_buttons = [btn_rentgen]
+        else:
+            self.plugin_buttons = []
+        
+        # Остальные плагины (без дублирования рентгена)
         for plugin in self.plugins:
+            if plugin.get_name() == "Рентген":
+                continue
             btn = QPushButton(plugin.get_name())
             btn.setMinimumHeight(40)
             btn.setMinimumWidth(150)

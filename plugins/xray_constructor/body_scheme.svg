@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 200" width="120" height="200">
+  <!-- >=BC@ B5;0 -->
+  <ellipse cx="60" cy="25" rx="22" ry="18" fill="none" stroke="#333" stroke-width="1.5"/>
+  <!-- @C4=0O :;5B:0 - 8=B5@0:B82=0O >1;0ABL -->
+  <path id="chest_region" d="M 38 45 L 82 45 L 85 95 L 75 100 L 45 100 Z" fill="#e0e0e0" stroke="#2196F3" stroke-width="2" stroke-linejoin="round"/>
+  <!-- "07 -->
+  <path d="M 42 100 L 78 100 L 82 160 L 38 160 Z" fill="none" stroke="#333" stroke-width="1.5"/>
+  <!-- >4?8AL -->
+  <text x="60" y="190" text-anchor="middle" font-size="10" fill="#666"></text>
+</svg>

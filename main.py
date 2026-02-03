@@ -19,9 +19,10 @@ def load_plugins() -> List[ModalityPlugin]:
         print(f"Папка {plugins_dir} не найдена!")
         return plugins
     
-    # Сканируем поддиректории в plugins/
-    for plugin_dir in plugins_dir.iterdir():
-        if not plugin_dir.is_dir():
+    # Сканируем поддиректории в plugins/ (сначала xray_constructor, чтобы «Рентген» был в списке)
+    subdirs = sorted(plugins_dir.iterdir(), key=lambda d: (0 if d.name == "xray_constructor" else 1, d.name))
+    for plugin_dir in subdirs:
+        if not plugin_dir.is_dir() or plugin_dir.name.startswith(".") or plugin_dir.name == "__pycache__":
             continue
         
         plugin_file = plugin_dir / "plugin.py"
@@ -29,9 +30,9 @@ def load_plugins() -> List[ModalityPlugin]:
             continue
         
         try:
-            # Динамический импорт плагина 
+            # Динамический импорт плагина
             spec = importlib.util.spec_from_file_location(
-                f"plugin_{plugin_dir.name}", 
+                f"plugin_{plugin_dir.name}",
                 plugin_file
             )
             if spec is None or spec.loader is None:
@@ -58,6 +59,9 @@ def load_plugins() -> List[ModalityPlugin]:
             
         except Exception as e:
             print(f"Ошибка при загрузке плагина {plugin_dir.name}: {e}")
+            if plugin_dir.name == "xray_constructor":
+                import traceback
+                traceback.print_exc()
             continue
     
     return plugins
