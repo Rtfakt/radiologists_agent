@@ -1,5 +1,6 @@
 """Плагин маммографии"""
 
+import json
 import sys
 from pathlib import Path
 
@@ -9,79 +10,138 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QApplication,
+    QWidget, QVBoxLayout, QHBoxLayout, QApplication,
     QPushButton, QButtonGroup, QGroupBox, QTextEdit
 )
-from PySide6.QtCore import Qt
 import re
 from core.plugin_base import ModalityPlugin
+
+PLUGIN_DIR = Path(__file__).parent
+
+
+def _load_json(name: str) -> dict:
+    """Загружает JSON из папки плагина."""
+    path = PLUGIN_DIR / name
+    if not path.exists():
+        return {}
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 
 class MammographyPlugin(ModalityPlugin):
     """Плагин для работы с маммографией"""
-    
+
     def __init__(self):
-        self.density = "B"  
-        self.conclusion = "норма"  
-        
-        # Тексты плотности для замены
-        self.density_texts = {
-            "A": "Тип плотности ACR-A( железистого компонента менее 25%), Структура представлена преимущественно элементами рассеянных участков фиброза и жировой ткани(жировая инволюция)",
-            "B": "Тип плотности ACR-В( железистого компонента от 25% до 50% ), соответствует возрасту.  Структура представлена преимущественно фиброзно-жировой и отдельными включениями железистой ткани.",
-            "C": "Тип плотности ACR-C( железистого компонента от 50% до 75%), соответствует возрасту. Структура представлена гетерогенно плотной тканью.",
-            "D": "Тип плотности ACR-D( железистого компонента, больше 75%), соответствует возрасту. Структура представлена преимущественно элементами железистой ткани, в меньшей степени фиброзной и жировой."
-        }
-        
-        # Тексты заключения для замены
-        self.conclusion_texts = {
-            "Норма": "ОЧАГОВОЙ ПАТОЛОГИИ МОЛОЧНЫХ ЖЕЛЕЗ НЕ ВЫЯВЛЕНО.",
-            "ФЖИ": "ФИБРОЗНО-ЖИРОВАЯ ИНВОЛЮЦИЯ МОЛОЧНЫХ ЖЕЛЕЗ.",
-            "ФКМ": "ФИБРОЗНО-КИСТОЗНАЯ МАСТОПАТИЯ."
-        }
-        
-        # Инициализируем базовый текст
-        self.base_text = """ПРАВАЯ МОЛОЧНАЯ ЖЕЛЕЗА В ДВУХ ПРОЕКЦИЯХ: Тип плотности ACR-В( железистого компонента от 25% до 50% ), соответствует возрасту.  Структура представлена преимущественно фиброзно-живой и отдельными включениями железистой ткани. Кожные покровы, сосок, ареола без особенностей.Кальцинаты доброкачественные - нет, злокачественные - нет. Участков ассиметрии - нет. Узловые образования не определяются. Нарушение архитектоники - нет. Лимфатические узлы не увеличены. Обызвествления сосудов нет. 
+        self.density = "B"
+        self.pathology_key = "норма"
+        self.side = "правая"
 
-ЛЕВАЯ МОЛОЧНАЯ ЖЕЛЕЗА  В ДВУХ ПРОЕКЦИЯХ: Тип плотности ACR-В( железистого компонента от 25% до 50% ), соответствует возрасту.  Структура представлена преимущественно фиброзно-жировой и отдельными включениями железистой ткани. Кожные покровы, сосок, ареола без особенностей. Кальцинаты доброкачественные - нет, злокачественные - нет. Участков ассиметрии - нет. Узловые образования не определяются. Нарушение архитектоники - нет. Лимфатические узлы не увеличены. Обызвествления сосудов нет. 
+        self.densities = _load_json("densities.json")
+        self.pathologies = _load_json("pathologies.json")
 
-ЗАКЛЮЧЕНИЕ: ОЧАГОВОЙ ПАТОЛОГИИ МОЛОЧНЫХ ЖЕЛЕЗ НЕ ВЫЯВЛЕНО. 
-BIRADS 1 СПРАВА И СЛЕВА 
+        if not self.densities:
+            self.densities = {}
+        if not self.pathologies:
+            self.pathologies = {}
 
-Динамический контроль через 1 год"""
-    
     def get_name(self) -> str:
         return "Маммография"
-    
+
     def get_description(self) -> str:
         return "Плагин для работы с маммографическими исследованиями"
-    
+
+    def _get_density_description(self) -> str:
+        """Возвращает текст описания плотности для выбранной буквы."""
+        d = self.densities.get(self.density, {})
+        return d.get("description", "")
+
+    def _get_base_description_for_side(self, side: str) -> str:
+        """Базовое описание для стороны из патологии «норма» с подстановкой плотности."""
+        norm = self.pathologies.get("норма", {})
+        desc = norm.get("description", {})
+        template = desc.get(side, "")
+        density_text = self._get_density_description()
+        return template.replace("{density}", density_text)
+
+    def _get_description_for_side(self, side: str) -> str:
+        """Формирует описание для одной стороны (правая/левая)."""
+        pathology = self.pathologies.get(self.pathology_key, {})
+        density_text = self._get_density_description()
+
+        if "description_replacements" in pathology:
+            base = self._get_base_description_for_side(side)
+            # Замену применяем только на поражённой стороне
+            if side == self.side:
+                repl = pathology["description_replacements"].get(side, {})
+                search_s = repl.get("search", "")
+                replace_s = repl.get("replace", "")
+                if search_s and replace_s:
+                    base = base.replace(search_s, replace_s)
+            return base
+
+        desc = pathology.get("description", {})
+        template = desc.get(side, "")
+        return template.replace("{density}", density_text)
+
+    def _build_full_report(self) -> str:
+        """Собирает полный отчёт: описание правой и левой, заключение, BIRADS, рекомендации."""
+        pathology = self.pathologies.get(self.pathology_key, {})
+        if not pathology:
+            return ""
+
+        desc_right = self._get_description_for_side("правая")
+        desc_left = self._get_description_for_side("левая")
+
+        if pathology.get("requires_side"):
+            side_display = "справа" if self.side == "правая" else "слева"
+            conclusion = pathology.get("conclusion", "").format(side=side_display)
+            birads_right = pathology["birads"]["правая"]
+            birads_left = pathology["birads"]["левая"]
+            if self.side == "левая":
+                birads_right, birads_left = birads_left, birads_right
+            birads_line = f"BIRADS {birads_right} справа, BIRADS {birads_left} слева"
+        else:
+            conclusion = pathology.get("conclusion", "")
+            birads = pathology.get("birads", {}).get("правая", "1")
+            birads_line = f"BIRADS {birads} СПРАВА И СЛЕВА"
+
+        followup = pathology.get("followup", "")
+
+        parts = [
+            desc_right,
+            "",
+            desc_left,
+            "",
+            f"ЗАКЛЮЧЕНИЕ: {conclusion}",
+            birads_line,
+            "",
+            followup,
+        ]
+        return "\n".join(parts)
+
     def create_widget(self) -> QWidget:
-        """Создает виджет с кнопками для плотности и заключения"""
+        """Создаёт виджет с выбором плотности, патологии и стороны."""
         widget = QWidget()
         main_layout = QHBoxLayout(widget)
         main_layout.setSpacing(10)
-        
-        # Левая колонка: текстовое поле и кнопка
+
+        # Левая колонка
         left_column = QVBoxLayout()
-        
+
         text_group = QGroupBox("Текст заключения (редактируемый)")
         text_layout = QVBoxLayout()
-        
         self.text_edit = QTextEdit()
-        self.text_edit.setPlainText(self.base_text)
+        self.text_edit.setPlainText(self._build_full_report())
         self.text_edit.setMinimumHeight(400)
         text_layout.addWidget(self.text_edit)
-        
         text_group.setLayout(text_layout)
         left_column.addWidget(text_group)
-        
-        # Кнопка "Сформировать отчет"
+
         generate_report_btn = QPushButton("Сформировать отчет")
         generate_report_btn.setMinimumHeight(40)
-        generate_report_btn.clicked.connect(self._generate_description)
+        generate_report_btn.clicked.connect(self._generate_report)
         left_column.addWidget(generate_report_btn)
-        
-        # Кнопки копирования
+
         copy_btns = QHBoxLayout()
         btn_copy_desc = QPushButton("Скопировать описание")
         btn_copy_desc.setMinimumHeight(36)
@@ -92,192 +152,135 @@ BIRADS 1 СПРАВА И СЛЕВА
         copy_btns.addWidget(btn_copy_desc)
         copy_btns.addWidget(btn_copy_conc)
         left_column.addLayout(copy_btns)
-        
         left_column.addStretch()
-        
-        # Правая колонка: поля ввода и кнопки
+
+        # Правая колонка
         right_column = QVBoxLayout()
-        
-        # Группа для выбора плотности
+
         density_group = QGroupBox("Плотность молочной железы (ACR)")
         density_layout = QHBoxLayout()
-        
         self.density_buttons = QButtonGroup()
-        density_btn_a = QPushButton("A")
-        density_btn_b = QPushButton("B")
-        density_btn_c = QPushButton("C")
-        density_btn_d = QPushButton("D")
-        
-        # Делаем кнопки переключаемыми
-        for btn in [density_btn_a, density_btn_b, density_btn_c, density_btn_d]:
+        for letter in ("A", "B", "C", "D"):
+            btn = QPushButton(letter)
             btn.setCheckable(True)
             btn.setMinimumHeight(40)
             density_layout.addWidget(btn)
             self.density_buttons.addButton(btn)
-        
-        # По умолчанию выбрана B
-        density_btn_b.setChecked(True)
         self.density_buttons.buttonClicked.connect(self._on_density_changed)
-        
+        for btn in self.density_buttons.buttons():
+            if btn.text() == "B":
+                btn.setChecked(True)
+                break
         density_group.setLayout(density_layout)
         right_column.addWidget(density_group)
-        
-        # Группа для выбора заключения
-        conclusion_group = QGroupBox("Заключение")
-        conclusion_layout = QVBoxLayout()
-        
-        self.conclusion_buttons = QButtonGroup()
-        conclusion_btn_normal = QPushButton("Норма")
-        conclusion_btn_fzhi = QPushButton("ФЖИ")
-        conclusion_btn_fkm = QPushButton("ФКМ")
-        
-        for btn in [conclusion_btn_normal, conclusion_btn_fzhi, conclusion_btn_fkm]:
+
+        pathology_group = QGroupBox("Патология / Заключение")
+        pathology_layout = QVBoxLayout()
+        self.pathology_buttons = QButtonGroup()
+        for key, data in self.pathologies.items():
+            name = data.get("name", key)
+            btn = QPushButton(name)
             btn.setCheckable(True)
             btn.setMinimumHeight(35)
-            conclusion_layout.addWidget(btn)
-            self.conclusion_buttons.addButton(btn)
-        
-        # По умолчанию выбрана норма
-        conclusion_btn_normal.setChecked(True)
-        self.conclusion_buttons.buttonClicked.connect(self._on_conclusion_changed)
-        
-        conclusion_group.setLayout(conclusion_layout)
-        right_column.addWidget(conclusion_group)
-        
-        right_column.addStretch()
-        
-        # Добавляем колонки в основной layout
-        main_layout.addLayout(left_column, 2)  # Левая колонка занимает 2 части
-        main_layout.addLayout(right_column, 1)  # Правая колонка занимает 1 часть
-        
-        return widget
-    
-    def _on_density_changed(self, button: QPushButton):
-        """Обработчик изменения плотности"""
-        self.density = button.text()
-    
-    def _on_conclusion_changed(self, button: QPushButton):
-        """Обработчик изменения заключения"""
-        self.conclusion = button.text()
-    
-    def _generate_description(self):
-        """Формирует описание, применяя выбранную плотность и заключение"""
-        # Получаем текущий текст из редактора
-        current_text = self.text_edit.toPlainText()
-        
-        # Получаем тексты для замены
-        new_density_text = self.density_texts.get(self.density, "")
-        new_conclusion_text = self.conclusion_texts.get(self.conclusion, "")
-        
-        # Проверяем, что значения найдены
-        if not new_density_text:
-            print(f"Предупреждение: плотность '{self.density}' не найдена в словаре")
-        if not new_conclusion_text:
-            print(f"Предупреждение: заключение '{self.conclusion}' не найдено в словаре")
-        
-        # Если текущий текст пустой, используем базовый
-        if not current_text.strip():
-            current_text = self.base_text
-        
-        # Заменяем плотность в тексте (для обеих молочных желез)
-        # Ищем паттерны плотности в тексте
-        density_patterns = [
-            r"Тип плотности ACR-[ABCD]\([^)]+\)[^.]*\.",  # Паттерн для текста плотности
-        ]
-        
-        for pattern in density_patterns:
-            matches = re.findall(pattern, current_text)
-            if matches:
-                # Заменяем все найденные вхождения
-                for match in matches:
-                    current_text = current_text.replace(match, new_density_text)
+            btn.setProperty("pathology_key", key)
+            pathology_layout.addWidget(btn)
+            self.pathology_buttons.addButton(btn)
+        self.pathology_buttons.buttonClicked.connect(self._on_pathology_changed)
+        for btn in self.pathology_buttons.buttons():
+            if btn.property("pathology_key") == "норма":
+                btn.setChecked(True)
                 break
-        
-        # Если паттерн не найден, добавляем текст плотности вручную
-        if not any(pattern in current_text for pattern in density_patterns):
-            # Это более простая замена для случая, когда структура текста отличается
-            current_text = re.sub(
-                r"(ПРАВАЯ МОЛОЧНАЯ ЖЕЛЕЗА[^:]+:).*?(Кожные покровы)",
-                r"\1 " + new_density_text + " \2",
-                current_text
-            )
-            current_text = re.sub(
-                r"(ЛЕВАЯ МОЛОЧНАЯ ЖЕЛЕЗА[^:]+:).*?(Кожные покровы)",
-                r"\1 " + new_density_text + " \2",
-                current_text
-            )
-        
-        # Заменяем заключение в тексте
-        # Ищем заключение после "ЗАКЛЮЧЕНИЕ:"
-        conclusion_match = re.search(r"ЗАКЛЮЧЕНИЕ:.*?(?=BIRADS|\n\n|$)", current_text, re.DOTALL)
-        if conclusion_match:
-            old_conclusion = conclusion_match.group(0)
-            new_conclusion_line = f"ЗАКЛЮЧЕНИЕ: {new_conclusion_text}"
-            current_text = current_text.replace(old_conclusion, new_conclusion_line)
-        else:
-            # Если не нашли стандартный формат, заменяем или добавляем вручную
-            if "ЗАКЛЮЧЕНИЕ:" in current_text:
-                current_text = re.sub(
-                    r"ЗАКЛЮЧЕНИЕ:.*",
-                    f"ЗАКЛЮЧЕНИЕ: {new_conclusion_text}",
-                    current_text
-                )
-            else:
-                # Добавляем заключение в конец
-                current_text += f"\n\nЗАКЛЮЧЕНИЕ: {new_conclusion_text}"
-        
-        # Обновляем текст в редакторе
-        self.text_edit.setPlainText(current_text)
-        
-        # Копируем в буфер только описание (без заключения)
-        desc = self._get_description_from_text(current_text)
+        pathology_group.setLayout(pathology_layout)
+        right_column.addWidget(pathology_group)
+
+        self.side_group = QGroupBox("Сторона")
+        side_layout = QHBoxLayout()
+        self.side_buttons = QButtonGroup()
+        btn_right = QPushButton("Правая")
+        btn_right.setCheckable(True)
+        btn_right.setChecked(True)
+        btn_right.setMinimumHeight(35)
+        btn_left = QPushButton("Левая")
+        btn_left.setCheckable(True)
+        btn_left.setMinimumHeight(35)
+        side_layout.addWidget(btn_right)
+        side_layout.addWidget(btn_left)
+        self.side_buttons.addButton(btn_right)
+        self.side_buttons.addButton(btn_left)
+        self.side_buttons.buttonClicked.connect(self._on_side_changed)
+        self.side_group.setLayout(side_layout)
+        right_column.addWidget(self.side_group)
+        self._update_side_group_visibility()
+
+        right_column.addStretch()
+
+        main_layout.addLayout(left_column, 2)
+        main_layout.addLayout(right_column, 1)
+        return widget
+
+    def _update_side_group_visibility(self):
+        """Показывает группу «Сторона» только для патологий с requires_side."""
+        pathology = self.pathologies.get(self.pathology_key, {})
+        self.side_group.setVisible(bool(pathology.get("requires_side")))
+
+    def _on_density_changed(self, button: QPushButton):
+        self.density = button.text()
+
+    def _on_pathology_changed(self, button: QPushButton):
+        key = button.property("pathology_key")
+        if key is not None:
+            self.pathology_key = key
+        self._update_side_group_visibility()
+
+    def _on_side_changed(self, button: QPushButton):
+        self.side = "правая" if button.text() == "Правая" else "левая"
+
+    def _generate_report(self):
+        """Формирует отчёт и подставляет его в редактор, копирует описание в буфер."""
+        full = self._build_full_report()
+        self.text_edit.setPlainText(full)
+        desc = self._get_description_from_text(full)
         if desc:
             QApplication.clipboard().setText(desc)
-    
+
     def _get_description_from_text(self, text: str) -> str:
-        """Возвращает часть текста до «ЗАКЛЮЧЕНИЕ:» (только описание)."""
+        """Текст до «ЗАКЛЮЧЕНИЕ:» — только описание."""
         if not text or not text.strip():
             return ""
         match = re.search(r"ЗАКЛЮЧЕНИЕ\s*:", text, re.IGNORECASE)
         if match:
             return text[: match.start()].strip()
         return text.strip()
-    
+
     def _get_conclusion_from_text(self, text: str) -> str:
-        """Возвращает часть текста начиная с «ЗАКЛЮЧЕНИЕ:» (только заключение)."""
+        """Текст с «ЗАКЛЮЧЕНИЕ:» до конца — заключение, BIRADS и рекомендации."""
         if not text or not text.strip():
             return ""
         match = re.search(r"ЗАКЛЮЧЕНИЕ\s*:.*", text, re.DOTALL | re.IGNORECASE)
         if match:
             return text[match.start() :].strip()
         return ""
-    
+
     def _copy_description(self):
-        """Копирует в буфер только описание."""
         text = self.text_edit.toPlainText()
         QApplication.clipboard().setText(self._get_description_from_text(text))
-    
+
     def _copy_conclusion(self):
-        """Копирует в буфер только заключение."""
         text = self.text_edit.toPlainText()
         QApplication.clipboard().setText(self._get_conclusion_from_text(text))
 
     def get_description_text(self) -> str:
-        """Текст описания для горячих клавиш."""
         if not hasattr(self, "text_edit"):
             return ""
         return self._get_description_from_text(self.text_edit.toPlainText())
 
     def get_conclusion_text(self) -> str:
-        """Текст заключения для горячих клавиш."""
         if not hasattr(self, "text_edit"):
             return ""
         return self._get_conclusion_from_text(self.text_edit.toPlainText())
-    
+
     def get_generated_text(self) -> str:
-        """Возвращает сформированный текст из редактора"""
-        return self.text_edit.toPlainText() if hasattr(self, 'text_edit') else ""
+        return self.text_edit.toPlainText() if hasattr(self, "text_edit") else ""
 
 
-# Обязательный класс Plugin для динамической загрузки
 Plugin = MammographyPlugin
