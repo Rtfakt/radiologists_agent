@@ -10,11 +10,26 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QApplication,
     QPushButton, QScrollArea, QLabel, QSplitter
 )
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QShortcut, QKeySequence
 from core.plugin_base import ModalityPlugin
+
+
+def _simulate_paste():
+    """Симулирует вставку из буфера (Cmd+V на macOS, Ctrl+V на Windows/Linux)."""
+    try:
+        from pynput.keyboard import Key, Controller
+        ctrl = Controller()
+        mod = Key.cmd if sys.platform == "darwin" else Key.ctrl
+        ctrl.press(mod)
+        ctrl.press("v")
+        ctrl.release("v")
+        ctrl.release(mod)
+    except Exception:
+        pass
 
 
 class MainWindow(QMainWindow):
@@ -30,6 +45,7 @@ class MainWindow(QMainWindow):
         self.setGeometry(100, 100, 1200, 800)
         
         self._setup_ui()
+        self._setup_hotkeys()
     
     def _setup_ui(self):
         """Настройка интерфейса"""
@@ -46,6 +62,37 @@ class MainWindow(QMainWindow):
         # Основная панель: виджет текущего плагина
         plugin_panel = self._create_plugin_widget_panel()
         main_layout.addWidget(plugin_panel)
+
+    def _setup_hotkeys(self):
+        """Горячие клавиши: Ctrl+Shift+S — вставить описание, Ctrl+Shift+D — вставить заключение."""
+        self._shortcut_description = QShortcut(
+            QKeySequence("Ctrl+Shift+S"), self, context=Qt.ApplicationShortcut
+        )
+        self._shortcut_description.activated.connect(self._on_paste_description)
+        self._shortcut_conclusion = QShortcut(
+            QKeySequence("Ctrl+Shift+D"), self, context=Qt.ApplicationShortcut
+        )
+        self._shortcut_conclusion.activated.connect(self._on_paste_conclusion)
+
+    def _on_paste_description(self):
+        """Копирует описание в буфер и симулирует вставку в активное окно."""
+        if not self.current_plugin:
+            return
+        text = self.current_plugin.get_description_text()
+        if not text:
+            return
+        QApplication.clipboard().setText(text)
+        _simulate_paste()
+
+    def _on_paste_conclusion(self):
+        """Копирует заключение в буфер и симулирует вставку в активное окно."""
+        if not self.current_plugin:
+            return
+        text = self.current_plugin.get_conclusion_text()
+        if not text:
+            return
+        QApplication.clipboard().setText(text)
+        _simulate_paste()
     
     def _create_modality_panel(self) -> QWidget:
         """Создает верхнюю панель с выбором модальностей горизонтально"""

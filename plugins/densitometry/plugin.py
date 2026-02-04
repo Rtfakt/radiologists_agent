@@ -1,8 +1,8 @@
 """Плагин денситометрии с улучшенной обработкой текста"""
 
 import sys
+import re
 from pathlib import Path
-from enum import Enum
 from typing import Optional
 
 # Добавляем корневую директорию проекта в sys.path
@@ -11,33 +11,18 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, 
+    QWidget, QVBoxLayout, QHBoxLayout, QApplication,
     QPushButton, QDoubleSpinBox, QGroupBox, QFormLayout, QTextEdit
 )
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QClipboard
+from PySide6.QtCore import Qt
 from core.plugin_base import ModalityPlugin
-
-
-class ClipboardState(Enum):
-    """Состояния машины для отслеживания копирования в буфер обмена"""
-    IDLE = "idle"
-    WAITING_FIRST_PASTE = "waiting_first_paste"
-    WAITING_SECOND_PASTE = "waiting_second_paste"
 
 
 class DensitometryPlugin(ModalityPlugin):
     """Плагин для работы с денситометрией"""
     
     def __init__(self):
-        # Состояние копирования в буфер обмена
-        self.clipboard_state = ClipboardState.IDLE
-        self.clipboard = None
-        self.clipboard_description = ""  # Текст описания для первой вставки
-        self.clipboard_conclusion = ""    # Текст заключения для второй вставки
-        self.is_clipboard_change_ours = False  # Флаг для предотвращения рекурсии
-        self.check_timer = QTimer()
-        self.check_timer.timeout.connect(self._check_clipboard)
+        pass
         
     def get_name(self) -> str:
         return "Денситометрия"
@@ -50,10 +35,6 @@ class DensitometryPlugin(ModalityPlugin):
         widget = QWidget()
         main_layout = QHBoxLayout(widget)
         main_layout.setSpacing(10)
-        
-        # Инициализируем буфер обмена
-        from PySide6.QtWidgets import QApplication
-        self.clipboard = QApplication.clipboard()
         
         # Левая колонка: два текстовых поля и кнопки
         left_column = QVBoxLayout()
@@ -87,6 +68,18 @@ class DensitometryPlugin(ModalityPlugin):
         self.generate_all_btn.setMinimumHeight(35)
         self.generate_all_btn.clicked.connect(self._generate_all_text)
         left_column.addWidget(self.generate_all_btn)
+        
+        # Кнопки копирования
+        copy_btns = QHBoxLayout()
+        btn_copy_desc = QPushButton("Скопировать описание")
+        btn_copy_desc.setMinimumHeight(36)
+        btn_copy_desc.clicked.connect(self._copy_description)
+        btn_copy_conc = QPushButton("Скопировать заключение")
+        btn_copy_conc.setMinimumHeight(36)
+        btn_copy_conc.clicked.connect(self._copy_conclusion)
+        copy_btns.addWidget(btn_copy_desc)
+        copy_btns.addWidget(btn_copy_conc)
+        left_column.addLayout(copy_btns)
         
         left_column.addStretch()
         
@@ -263,48 +256,60 @@ class DensitometryPlugin(ModalityPlugin):
         """Очищает tooltip кнопки"""
         button.setToolTip("")
     
-    def _copy_to_clipboard_with_tracking(self, description: str, conclusion: str):
-        """Копирует текст в буфер обмена с отслеживанием вставок"""
-        # Отменяем предыдущую операцию, если она активна
-        if self.clipboard_state != ClipboardState.IDLE:
-            self.check_timer.stop()
-            self.clipboard_state = ClipboardState.IDLE
-        
-        # Сохраняем тексты
-        self.clipboard_description = description
-        self.clipboard_conclusion = conclusion
-        
-        # Копируем описание в буфер
-        self.is_clipboard_change_ours = True
-        self.clipboard.setText(description)
-        self.is_clipboard_change_ours = False
-        
-        # Устанавливаем состояние ожидания первой вставки
-        self.clipboard_state = ClipboardState.WAITING_FIRST_PASTE
-        
-        # Запускаем таймер для проверки
-        self.check_timer.start(100)  # Проверяем каждые 100 мс
+    def _split_description_conclusion(self, text: str) -> tuple[str, str]:
+        """Разбивает текст блока на описание и заключение по маркеру «Заключение.» / «Заключение:»."""
+        if not text or not text.strip():
+            return "", ""
+        match = re.search(r"\n\n\s*Заключение[.:]", text, re.IGNORECASE)
+        if match:
+            return text[: match.start()].strip(), text[match.start() :].strip()
+        return text.strip(), ""
     
-    def _check_clipboard(self):
-        """Проверяет состояние буфера обмена и обновляет его по необходимости"""
-        current_text = self.clipboard.text()
-        
-        if self.clipboard_state == ClipboardState.WAITING_FIRST_PASTE:
-            # Проверяем, было ли описание вставлено
-            # Если буфер пуст или текст не совпадает с описанием, предполагаем, что текст был вставлен
-            if not current_text or current_text != self.clipboard_description:
-                # Заменяем на заключение
-                self.is_clipboard_change_ours = True
-                self.clipboard.setText(self.clipboard_conclusion)
-                self.is_clipboard_change_ours = False
-                self.clipboard_state = ClipboardState.WAITING_SECOND_PASTE
-        
-        elif self.clipboard_state == ClipboardState.WAITING_SECOND_PASTE:
-            # Проверяем, было ли заключение вставлено
-            if not current_text or current_text != self.clipboard_conclusion:
-                # Останавливаем таймер и сбрасываем состояние
-                self.check_timer.stop()
-                self.clipboard_state = ClipboardState.IDLE
+    def _get_combined_description(self) -> str:
+        """Возвращает объединённое описание из обоих редакторов (без заключений)."""
+        parts = []
+        spine_text = self.spine_text_edit.toPlainText().strip()
+        if spine_text:
+            desc, _ = self._split_description_conclusion(spine_text)
+            if desc:
+                parts.append(desc)
+        femur_text = self.femur_text_edit.toPlainText().strip()
+        if femur_text:
+            desc, _ = self._split_description_conclusion(femur_text)
+            if desc:
+                parts.append(desc)
+        return "\n\n".join(parts)
+    
+    def _get_combined_conclusion(self) -> str:
+        """Возвращает объединённое заключение из обоих редакторов."""
+        parts = []
+        spine_text = self.spine_text_edit.toPlainText().strip()
+        if spine_text:
+            _, conc = self._split_description_conclusion(spine_text)
+            if conc:
+                parts.append(conc)
+        femur_text = self.femur_text_edit.toPlainText().strip()
+        if femur_text:
+            _, conc = self._split_description_conclusion(femur_text)
+            if conc:
+                parts.append(conc)
+        return "\n\n".join(parts)
+    
+    def _copy_description(self):
+        """Копирует в буфер только описание."""
+        QApplication.clipboard().setText(self._get_combined_description())
+    
+    def _copy_conclusion(self):
+        """Копирует в буфер только заключение."""
+        QApplication.clipboard().setText(self._get_combined_conclusion())
+
+    def get_description_text(self) -> str:
+        """Текст описания для горячих клавиш."""
+        return self._get_combined_description()
+
+    def get_conclusion_text(self) -> str:
+        """Текст заключения для горячих клавиш."""
+        return self._get_combined_conclusion()
     
     def _generate_spine_text(self):
         """Формирует текст для позвоночника с валидацией и копированием в буфер"""
@@ -322,10 +327,10 @@ class DensitometryPlugin(ModalityPlugin):
         spine_bmd = self.spine_bmd.value()
         spine_diagnosis = self._get_diagnosis(spine_t)
         
-        # Формируем текст описания (для первой вставки)
+        # Формируем текст описания
         description = f"""Поясничный отдел позвоночника. Поясничные позвонки: L1–L4. Среднее значение МПК составило {spine_bmd:.3f} г/см². Т-критерий – {spine_t:.1f}"""
         
-        # Формируем текст заключения (для второй вставки)
+        # Формируем текст заключения
         conclusion = f"""Заключение. Позвоночник - {spine_diagnosis}"""
         
         # Полный текст для отображения в редакторе
@@ -334,8 +339,8 @@ class DensitometryPlugin(ModalityPlugin):
         # Обновляем текстовое поле позвоночника
         self.spine_text_edit.setPlainText(full_text)
         
-        # Копируем в буфер обмена с отслеживанием
-        self._copy_to_clipboard_with_tracking(description, conclusion)
+        # Копируем в буфер только описание
+        QApplication.clipboard().setText(description)
     
     def _generate_femur_text(self):
         """Формирует текст для бедренной кости с валидацией и копированием в буфер"""
@@ -361,12 +366,12 @@ class DensitometryPlugin(ModalityPlugin):
         total_hip_bmd = self.total_hip_bmd.value()
         total_hip_diagnosis = self._get_diagnosis(total_hip_t)
         
-        # Формируем текст описания (для первой вставки)
+        # Формируем текст описания
         description = f"""Проксимальный отдел бедра. Бедренная кость: левая.
 Шейка бедренной кости (femoral neck). Значение МПК составило {femur_bmd:.3f} г/см². Т-критерий – {femur_t:.1f}. Z-критерий – {femur_z:.1f}. FRAX – {femur_frax:.1f}%
 Проксимальный отдел бедра в целом (total hip). Значение МПК составило {total_hip_bmd:.3f} г/см². Т-критерий – {total_hip_t:.1f}. Z-критерий – {total_hip_z:.1f}."""
         
-        # Формируем текст заключения (для второй вставки)
+        # Формируем текст заключения
         conclusion = f"""Заключение: Проксимальный отдел бедра в целом: {total_hip_diagnosis}. Шейка бедренной кости: {femur_diagnosis}."""
         
         # Полный текст для отображения в редакторе
@@ -375,8 +380,8 @@ class DensitometryPlugin(ModalityPlugin):
         # Обновляем текстовое поле бедренной кости
         self.femur_text_edit.setPlainText(full_text)
         
-        # Копируем в буфер обмена с отслеживанием
-        self._copy_to_clipboard_with_tracking(description, conclusion)
+        # Копируем в буфер только описание
+        QApplication.clipboard().setText(description)
     
     def _generate_all_text(self):
         """Формирует весь отчет целиком (позвоночник и бедренная кость) с валидацией"""
@@ -429,8 +434,8 @@ class DensitometryPlugin(ModalityPlugin):
         
         conclusion = f"{spine_conc}\n\n{femur_conc}"
         
-        # Копируем в буфер обмена с отслеживанием
-        self._copy_to_clipboard_with_tracking(description, conclusion)
+        # Копируем в буфер только описание
+        QApplication.clipboard().setText(description)
     
     def _generate_spine_text_internal(self):
         """Внутренний метод генерации текста позвоночника без копирования в буфер"""

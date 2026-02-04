@@ -9,7 +9,7 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QApplication,
     QPushButton, QButtonGroup, QGroupBox, QTextEdit
 )
 from PySide6.QtCore import Qt
@@ -80,6 +80,18 @@ BIRADS 1 СПРАВА И СЛЕВА
         generate_report_btn.setMinimumHeight(40)
         generate_report_btn.clicked.connect(self._generate_description)
         left_column.addWidget(generate_report_btn)
+        
+        # Кнопки копирования
+        copy_btns = QHBoxLayout()
+        btn_copy_desc = QPushButton("Скопировать описание")
+        btn_copy_desc.setMinimumHeight(36)
+        btn_copy_desc.clicked.connect(self._copy_description)
+        btn_copy_conc = QPushButton("Скопировать заключение")
+        btn_copy_conc.setMinimumHeight(36)
+        btn_copy_conc.clicked.connect(self._copy_conclusion)
+        copy_btns.addWidget(btn_copy_desc)
+        copy_btns.addWidget(btn_copy_conc)
+        left_column.addLayout(copy_btns)
         
         left_column.addStretch()
         
@@ -216,8 +228,51 @@ BIRADS 1 СПРАВА И СЛЕВА
         
         # Обновляем текст в редакторе
         self.text_edit.setPlainText(current_text)
+        
+        # Копируем в буфер только описание (без заключения)
+        desc = self._get_description_from_text(current_text)
+        if desc:
+            QApplication.clipboard().setText(desc)
     
+    def _get_description_from_text(self, text: str) -> str:
+        """Возвращает часть текста до «ЗАКЛЮЧЕНИЕ:» (только описание)."""
+        if not text or not text.strip():
+            return ""
+        match = re.search(r"ЗАКЛЮЧЕНИЕ\s*:", text, re.IGNORECASE)
+        if match:
+            return text[: match.start()].strip()
+        return text.strip()
+    
+    def _get_conclusion_from_text(self, text: str) -> str:
+        """Возвращает часть текста начиная с «ЗАКЛЮЧЕНИЕ:» (только заключение)."""
+        if not text or not text.strip():
+            return ""
+        match = re.search(r"ЗАКЛЮЧЕНИЕ\s*:.*", text, re.DOTALL | re.IGNORECASE)
+        if match:
+            return text[match.start() :].strip()
+        return ""
+    
+    def _copy_description(self):
+        """Копирует в буфер только описание."""
+        text = self.text_edit.toPlainText()
+        QApplication.clipboard().setText(self._get_description_from_text(text))
+    
+    def _copy_conclusion(self):
+        """Копирует в буфер только заключение."""
+        text = self.text_edit.toPlainText()
+        QApplication.clipboard().setText(self._get_conclusion_from_text(text))
 
+    def get_description_text(self) -> str:
+        """Текст описания для горячих клавиш."""
+        if not hasattr(self, "text_edit"):
+            return ""
+        return self._get_description_from_text(self.text_edit.toPlainText())
+
+    def get_conclusion_text(self) -> str:
+        """Текст заключения для горячих клавиш."""
+        if not hasattr(self, "text_edit"):
+            return ""
+        return self._get_conclusion_from_text(self.text_edit.toPlainText())
     
     def get_generated_text(self) -> str:
         """Возвращает сформированный текст из редактора"""

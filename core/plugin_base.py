@@ -28,3 +28,11 @@ class ModalityPlugin(BasePlugin):
         Возвращает QWidget (но тип Any, чтобы не импортировать PySide6 в core)
         """
         pass
+
+    def get_description_text(self) -> str:
+        """Текст описания для горячих клавиш (описание). По умолчанию пусто."""
+        return ""
+
+    def get_conclusion_text(self) -> str:
+        """Текст заключения для горячих клавиш (заключение). По умолчанию пусто."""
+        return ""

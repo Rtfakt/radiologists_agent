@@ -11,23 +11,15 @@ if str(project_root) not in sys.path:
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QButtonGroup,
-    QGroupBox, QTextEdit, QComboBox, QRadioButton, QScrollArea, QFileDialog,
-    QMessageBox, QInputDialog, QFrame, QSizePolicy, QApplication
+    QTextEdit, QComboBox, QRadioButton, QScrollArea, QFrame, QApplication
 )
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QClipboard
-
-try:
-    from PySide6.QtSvg import QSvgWidget
-except ImportError:
-    QSvgWidget = None
 
 from core.plugin_base import ModalityPlugin
 
 
 PLUGIN_DIR = Path(__file__).parent
 DEFAULT_CONFIG_PATH = PLUGIN_DIR / "config.json"
-DEFAULT_PRESETS_PATH = PLUGIN_DIR / "presets.json"
 
 
 def _load_json(path: Path, default: Any) -> Any:
@@ -99,13 +91,10 @@ class XrayConstructorPlugin(ModalityPlugin):
 
     def __init__(self):
         self._config_path = DEFAULT_CONFIG_PATH
-        self._presets_path = DEFAULT_PRESETS_PATH
         self._config = _load_json(self._config_path, {"исследования": []})
-        self._presets = _load_json(self._presets_path, [])
         self._current_study_id: str | None = None
         self._pathology_cards: list[tuple[str, str]] = []  # [(pathology_id, side_id), ...]
         self._card_widgets: list[tuple[PathologyCard, str, str]] = []  # [(widget, pathology_id, side_id)]
-        self._copy_step = 0  # 0=idle, 1=description copied, 2=done
 
     def get_name(self) -> str:
         return "Рентген"
@@ -230,18 +219,6 @@ class XrayConstructorPlugin(ModalityPlugin):
         self._refresh_add_pathology_combo()
         self._refresh_texts()
 
-    def _on_scheme_clicked(self):
-        studies = self._config.get("исследования", [])
-        if not studies:
-            return
-        idx = 0
-        for i, s in enumerate(studies):
-            if s.get("id") == self._current_study_id:
-                idx = i
-                break
-        if hasattr(self, "_combo_study"):
-            self._combo_study.setCurrentIndex(idx)
-
     def _add_pathology(self, pathology_id: str, side_id: str):
         study = self._get_study()
         if not study:
@@ -330,124 +307,32 @@ class XrayConstructorPlugin(ModalityPlugin):
             self._combo_add_pathology.setCurrentIndex(0)
 
     def _form_report(self):
-        clipboard = QApplication.clipboard()
-        if self._copy_step == 0:
-            desc = self._build_description()
-            header = self._build_header()
-            text = f"{header}\n\n{desc}" if header else desc
-            clipboard.setText(text)
-            self._copy_step = 1
-            self._btn_form_report.setText("ОПИСАНИЕ СКОПИРОВАНО")
-            self._btn_form_report.setToolTip(
-                "Вставьте описание в целевую программу. После вставки нажмите кнопку еще раз для копирования ЗАКЛЮЧЕНИЯ."
-            )
-        else:
-            conc = self._build_conclusion()
-            clipboard.setText(conc)
-            self._copy_step = 0
-            self._btn_form_report.setText("СФОРМИРОВАТЬ ОТЧЕТ")
-            self._btn_form_report.setToolTip("")
+        """Формирует отчёт и копирует в буфер только описание (без заключения)."""
+        desc = self._build_description()
+        header = self._build_header()
+        text = f"{header}\n\n{desc}" if header else desc
+        QApplication.clipboard().setText(text)
 
-    def _save_preset(self):
-        name, ok = QInputDialog.getText(
-            self._right_widget,
-            "Сохранить пресет",
-            "Название пресета:",
-        )
-        if not ok or not name.strip():
-            return
-        preset = {
-            "название": name.strip(),
-            "исследование_id": self._current_study_id or "",
-            "патологии": [{"pathology_id": p, "side_id": s} for p, s in self._pathology_cards],
-        }
-        self._presets.append(preset)
-        if _save_json(self._presets_path, self._presets):
-            self._refresh_presets_combo()
-            QMessageBox.information(self._right_widget, "Пресет", "Пресет сохранён.")
-        else:
-            QMessageBox.warning(self._right_widget, "Ошибка", "Не удалось сохранить пресеты.")
+    def _copy_description(self):
+        """Копирует в буфер только описание."""
+        desc = self._build_description()
+        header = self._build_header()
+        text = f"{header}\n\n{desc}" if header else desc
+        QApplication.clipboard().setText(text)
 
-    def _load_preset(self, index: int):
-        if index < 0 or index >= len(self._presets):
-            return
-        preset = self._presets[index]
-        study_id = preset.get("исследование_id", "")
-        studies = self._config.get("исследования", [])
-        idx = 0
-        for i, s in enumerate(studies):
-            if s.get("id") == study_id:
-                idx = i
-                break
-        self._current_study_id = study_id
-        self._pathology_cards = [
-            (p.get("pathology_id", ""), p.get("side_id", ""))
-            for p in preset.get("патологии", [])
-        ]
-        if hasattr(self, "_combo_study"):
-            self._combo_study.blockSignals(True)
-            self._combo_study.setCurrentIndex(idx)
-            self._combo_study.blockSignals(False)
-        self._rebuild_cards()
-        self._refresh_texts()
+    def _copy_conclusion(self):
+        """Копирует в буфер только заключение."""
+        QApplication.clipboard().setText(self._build_conclusion())
 
-    def _delete_preset(self):
-        idx = self._combo_presets.currentIndex()
-        if idx < 0 or idx >= len(self._presets):
-            return
-        self._presets.pop(idx)
-        _save_json(self._presets_path, self._presets)
-        self._refresh_presets_combo()
+    def get_description_text(self) -> str:
+        """Текст описания для горячих клавиш."""
+        desc = self._build_description()
+        header = self._build_header()
+        return f"{header}\n\n{desc}" if header else desc
 
-    def _refresh_presets_combo(self):
-        if not hasattr(self, "_combo_presets"):
-            return
-        self._combo_presets.blockSignals(True)
-        self._combo_presets.clear()
-        for p in self._presets:
-            self._combo_presets.addItem(p.get("название", ""))
-        self._combo_presets.blockSignals(False)
-
-    def _import_config(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self._right_widget,
-            "Импорт конфигурации",
-            "",
-            "JSON (*.json)",
-        )
-        if not path:
-            return
-        data = _load_json(Path(path), None)
-        if data is None or "исследования" not in data:
-            QMessageBox.warning(self._right_widget, "Ошибка", "Некорректный файл конфигурации.")
-            return
-        self._config = data
-        self._config_path = Path(path)
-        studies = self._config.get("исследования", [])
-        self._combo_study.clear()
-        for s in studies:
-            self._combo_study.addItem(s.get("название", s.get("id", "")))
-        if studies:
-            self._current_study_id = studies[0]["id"]
-            self._combo_study.setCurrentIndex(0)
-        self._pathology_cards.clear()
-        self._rebuild_cards()
-        self._refresh_texts()
-        QMessageBox.information(self._right_widget, "Импорт", "Конфигурация загружена.")
-
-    def _export_presets(self):
-        path, _ = QFileDialog.getSaveFileName(
-            self._right_widget,
-            "Экспорт пресетов",
-            "presets.json",
-            "JSON (*.json)",
-        )
-        if not path:
-            return
-        if _save_json(Path(path), self._presets):
-            QMessageBox.information(self._right_widget, "Экспорт", "Пресеты экспортированы.")
-        else:
-            QMessageBox.warning(self._right_widget, "Ошибка", "Не удалось сохранить файл.")
+    def get_conclusion_text(self) -> str:
+        """Текст заключения для горячих клавиш."""
+        return self._build_conclusion()
 
     def create_widget(self) -> QWidget:
         root = QWidget()
@@ -458,7 +343,7 @@ class XrayConstructorPlugin(ModalityPlugin):
         if studies and not self._current_study_id:
             self._current_study_id = studies[0]["id"]
 
-        # ---- Левая панель: результат ----
+        # ---- Левая панель: текст ----
         left = QFrame()
         left.setFrameStyle(QFrame.StyledPanel)
         left_layout = QVBoxLayout(left)
@@ -472,75 +357,46 @@ class XrayConstructorPlugin(ModalityPlugin):
         self._te_conclusion.setReadOnly(True)
         self._te_conclusion.setMinimumHeight(120)
         left_layout.addWidget(self._te_conclusion)
+        # Кнопки копирования
+        copy_btns = QHBoxLayout()
+        btn_copy_desc = QPushButton("Скопировать описание")
+        btn_copy_desc.setMinimumHeight(36)
+        btn_copy_desc.clicked.connect(self._copy_description)
+        btn_copy_conc = QPushButton("Скопировать заключение")
+        btn_copy_conc.setMinimumHeight(36)
+        btn_copy_conc.clicked.connect(self._copy_conclusion)
+        copy_btns.addWidget(btn_copy_desc)
+        copy_btns.addWidget(btn_copy_conc)
+        left_layout.addLayout(copy_btns)
         main_layout.addWidget(left, 1)
 
-        # ---- Центральная панель: конструктор ----
-        self._center_widget = QWidget()
-        center_layout = QVBoxLayout(self._center_widget)
-        svg_path = PLUGIN_DIR / "body_scheme.svg"
-        if svg_path.exists() and QSvgWidget is not None:
-            svg = QSvgWidget(str(svg_path))
-            svg.setFixedSize(120, 200)
-            svg.setCursor(Qt.PointingHandCursor)
-            svg.mousePressEvent = lambda e: self._on_scheme_clicked()
-            center_layout.addWidget(svg, alignment=Qt.AlignCenter)
-        else:
-            scheme_label = QLabel("Схема (ОГК)")
-            scheme_label.setAlignment(Qt.AlignCenter)
-            scheme_label.setFixedSize(120, 200)
-            scheme_label.setStyleSheet("border: 1px solid #ccc; background: #f5f5f5;")
-            scheme_label.setCursor(Qt.PointingHandCursor)
-            scheme_label.mousePressEvent = lambda e: self._on_scheme_clicked()
-            center_layout.addWidget(scheme_label, alignment=Qt.AlignCenter)
+        # ---- Правая панель: область исследования и патологии ----
+        right = QWidget()
+        right_layout = QVBoxLayout(right)
+        self._btn_form_report = QPushButton("СФОРМИРОВАТЬ ОТЧЕТ")
+        self._btn_form_report.setMinimumHeight(44)
+        self._btn_form_report.clicked.connect(self._form_report)
+        right_layout.addWidget(self._btn_form_report)
+        right_layout.addWidget(QLabel("ОБЛАСТЬ ИССЛЕДОВАНИЯ"))
         self._combo_study = QComboBox()
         for s in studies:
             self._combo_study.addItem(s.get("название", s.get("id", "")))
         self._combo_study.currentIndexChanged.connect(self._on_study_changed)
-        center_layout.addWidget(QLabel("ИССЛЕДОВАНИЕ"))
-        center_layout.addWidget(self._combo_study)
-        center_layout.addWidget(QLabel("ДОБАВИТЬ ПАТОЛОГИЮ"))
+        right_layout.addWidget(self._combo_study)
+        right_layout.addWidget(QLabel("ДОБАВИТЬ ПАТОЛОГИЮ"))
         self._combo_add_pathology = QComboBox()
         self._refresh_add_pathology_combo()
         self._combo_add_pathology.currentIndexChanged.connect(self._on_add_pathology_selected)
-        center_layout.addWidget(self._combo_add_pathology)
-        center_layout.addWidget(QLabel("Патологии:"))
+        right_layout.addWidget(self._combo_add_pathology)
+        right_layout.addWidget(QLabel("Патологии:"))
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._cards_container = QWidget()
         self._cards_container.setLayout(QVBoxLayout())
         scroll.setWidget(self._cards_container)
-        center_layout.addWidget(scroll, 1)
-        main_layout.addWidget(self._center_widget, 1)
-
-        # ---- Правая панель: управление ----
-        self._right_widget = QWidget()
-        right_layout = QVBoxLayout(self._right_widget)
-        self._btn_form_report = QPushButton("СФОРМИРОВАТЬ ОТЧЕТ")
-        self._btn_form_report.setMinimumHeight(44)
-        self._btn_form_report.clicked.connect(self._form_report)
-        right_layout.addWidget(self._btn_form_report)
-        right_layout.addWidget(QLabel("ПРЕСЕТЫ"))
-        self._combo_presets = QComboBox()
-        self._refresh_presets_combo()
-        self._combo_presets.currentIndexChanged.connect(self._load_preset)
-        right_layout.addWidget(self._combo_presets)
-        row = QHBoxLayout()
-        btn_save_preset = QPushButton("Сохранить текущий")
-        btn_save_preset.clicked.connect(self._save_preset)
-        row.addWidget(btn_save_preset)
-        btn_del_preset = QPushButton("Удалить выбранный")
-        btn_del_preset.clicked.connect(self._delete_preset)
-        row.addWidget(btn_del_preset)
-        right_layout.addLayout(row)
-        btn_import = QPushButton("ИМПОРТ КОНФИГУРАЦИИ")
-        btn_import.clicked.connect(self._import_config)
-        right_layout.addWidget(btn_import)
-        btn_export = QPushButton("ЭКСПОРТ КОНФИГУРАЦИИ")
-        btn_export.clicked.connect(self._export_presets)
-        right_layout.addWidget(btn_export)
-        right_layout.addStretch()
-        main_layout.addWidget(self._right_widget, 0)
+        right_layout.addWidget(scroll, 1)
+        main_layout.addWidget(right, 0)
 
         self._on_study_changed(self._combo_study.currentIndex())
         self._refresh_texts()
