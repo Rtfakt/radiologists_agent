@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QApplication,
     QPushButton, QButtonGroup, QGroupBox, QTextEdit
 )
+from PySide6.QtGui import QShortcut, QKeySequence
 import re
 from core.plugin_base import ModalityPlugin
 
@@ -217,6 +218,13 @@ class MammographyPlugin(ModalityPlugin):
 
         main_layout.addLayout(left_column, 2)
         main_layout.addLayout(right_column, 1)
+
+        # Горячие клавиши: Ctrl+Alt+S — скопировать описание, Ctrl+Alt+D — скопировать заключение
+        self._shortcut_copy_desc = QShortcut(QKeySequence("Ctrl+Alt+S"), widget)
+        self._shortcut_copy_desc.activated.connect(self._copy_description)
+        self._shortcut_copy_conc = QShortcut(QKeySequence("Ctrl+Alt+D"), widget)
+        self._shortcut_copy_conc.activated.connect(self._copy_conclusion)
+
         return widget
 
     def _update_side_group_visibility(self):
