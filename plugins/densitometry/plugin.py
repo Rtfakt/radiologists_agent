@@ -30,8 +30,9 @@ class DensitometryPlugin(ModalityPlugin):
     def get_description(self) -> str:
         return "Плагин для работы с денситометрическими исследованиями"
     
-    def create_widget(self) -> QWidget:
+    def create_widget(self, on_report_generated=None) -> QWidget:
         """Создает виджет с полями для T/Z-критериев и костной массы"""
+        self._on_report_generated = on_report_generated
         widget = QWidget()
         main_layout = QHBoxLayout(widget)
         main_layout.setSpacing(10)
@@ -341,6 +342,8 @@ class DensitometryPlugin(ModalityPlugin):
         
         # Копируем в буфер только описание
         QApplication.clipboard().setText(description)
+        if getattr(self, "_on_report_generated", None):
+            self._on_report_generated(description, conclusion)
     
     def _generate_femur_text(self):
         """Формирует текст для бедренной кости с валидацией и копированием в буфер"""
@@ -382,6 +385,8 @@ class DensitometryPlugin(ModalityPlugin):
         
         # Копируем в буфер только описание
         QApplication.clipboard().setText(description)
+        if getattr(self, "_on_report_generated", None):
+            self._on_report_generated(description, conclusion)
     
     def _generate_all_text(self):
         """Формирует весь отчет целиком (позвоночник и бедренная кость) с валидацией"""
@@ -436,6 +441,8 @@ class DensitometryPlugin(ModalityPlugin):
         
         # Копируем в буфер только описание
         QApplication.clipboard().setText(description)
+        if getattr(self, "_on_report_generated", None):
+            self._on_report_generated(description, conclusion)
     
     def _generate_spine_text_internal(self):
         """Внутренний метод генерации текста позвоночника без копирования в буфер"""

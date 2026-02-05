@@ -22,9 +22,11 @@ class ModalityPlugin(BasePlugin):
     """Базовый класс для плагинов модальностей"""
     
     @abstractmethod
-    def create_widget(self) -> Any:
+    def create_widget(self, on_report_generated=None) -> Any:
         """
         Создает виджет для плагина.
+        on_report_generated: опциональный callback(description: str, conclusion: str),
+        вызывается при нажатии «Сформировать»/«Сформировать отчёт» для горячих клавиш.
         Возвращает QWidget (но тип Any, чтобы не импортировать PySide6 в core)
         """
         pass

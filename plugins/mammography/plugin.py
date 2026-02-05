@@ -119,8 +119,9 @@ class MammographyPlugin(ModalityPlugin):
         ]
         return "\n".join(parts)
 
-    def create_widget(self) -> QWidget:
+    def create_widget(self, on_report_generated=None) -> QWidget:
         """Создаёт виджет с выбором плотности, патологии и стороны."""
+        self._on_report_generated = on_report_generated
         widget = QWidget()
         main_layout = QHBoxLayout(widget)
         main_layout.setSpacing(10)
@@ -240,8 +241,11 @@ class MammographyPlugin(ModalityPlugin):
         full = self._build_full_report()
         self.text_edit.setPlainText(full)
         desc = self._get_description_from_text(full)
+        conc = self._get_conclusion_from_text(full)
         if desc:
             QApplication.clipboard().setText(desc)
+        if getattr(self, "_on_report_generated", None):
+            self._on_report_generated(desc or "", conc or "")
 
     def _get_description_from_text(self, text: str) -> str:
         """Текст до «ЗАКЛЮЧЕНИЕ:» — только описание."""

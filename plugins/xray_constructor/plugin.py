@@ -311,7 +311,10 @@ class XrayConstructorPlugin(ModalityPlugin):
         desc = self._build_description()
         header = self._build_header()
         text = f"{header}\n\n{desc}" if header else desc
+        conc = self._build_conclusion()
         QApplication.clipboard().setText(text)
+        if getattr(self, "_on_report_generated", None):
+            self._on_report_generated(text, conc)
 
     def _copy_description(self):
         """Копирует в буфер только описание."""
@@ -334,7 +337,8 @@ class XrayConstructorPlugin(ModalityPlugin):
         """Текст заключения для горячих клавиш."""
         return self._build_conclusion()
 
-    def create_widget(self) -> QWidget:
+    def create_widget(self, on_report_generated=None) -> QWidget:
+        self._on_report_generated = on_report_generated
         root = QWidget()
         main_layout = QHBoxLayout(root)
         main_layout.setContentsMargins(8, 8, 8, 8)

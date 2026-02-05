@@ -40,7 +40,10 @@ class MainWindow(QMainWindow):
         self.plugins = plugins
         self.current_plugin: Optional[ModalityPlugin] = None
         self.current_widget: Optional[QWidget] = None
-        
+        # Последний сформированный отчёт (обновляется при нажатии «Сформировать»/«Сформировать отчёт»)
+        self._last_description = ""
+        self._last_conclusion = ""
+
         self.setWindowTitle("Конструктор рентгеновских заключений")
         self.setGeometry(100, 100, 1200, 800)
         
@@ -74,32 +77,23 @@ class MainWindow(QMainWindow):
         )
         self._shortcut_conclusion.activated.connect(self._on_paste_conclusion)
 
-    def _get_visible_plugin(self) -> Optional[ModalityPlugin]:
-        """Плагин привязан к виджету при переключении — берём из виджета, а не из переменной."""
-        if self.current_widget and hasattr(self.current_widget, "_modality_plugin"):
-            return getattr(self.current_widget, "_modality_plugin")
-        return self.current_plugin
+    def _store_report(self, description: str, conclusion: str):
+        """Вызывается плагином при нажатии «Сформировать»/«Сформировать отчёт» — для горячих клавиш."""
+        self._last_description = description or ""
+        self._last_conclusion = conclusion or ""
 
     def _on_paste_description(self):
-        """Копирует описание в буфер и симулирует вставку в активное окно."""
-        plugin = self._get_visible_plugin()
-        if not plugin:
+        """Вставляет последнее сохранённое описание (после «Сформировать» в любой модальности)."""
+        if not self._last_description:
             return
-        text = plugin.get_description_text()
-        if not text:
-            return
-        QApplication.clipboard().setText(text)
+        QApplication.clipboard().setText(self._last_description)
         _simulate_paste()
 
     def _on_paste_conclusion(self):
-        """Копирует заключение в буфер и симулирует вставку в активное окно."""
-        plugin = self._get_visible_plugin()
-        if not plugin:
+        """Вставляет последнее сохранённое заключение (после «Сформировать» в любой модальности)."""
+        if not self._last_conclusion:
             return
-        text = plugin.get_conclusion_text()
-        if not text:
-            return
-        QApplication.clipboard().setText(text)
+        QApplication.clipboard().setText(self._last_conclusion)
         _simulate_paste()
     
     def _create_modality_panel(self) -> QWidget:
@@ -173,9 +167,8 @@ class MainWindow(QMainWindow):
             self.current_widget.setParent(None)
             self.current_widget.deleteLater()
         
-        # Создаем новый виджет плагина и привязываем к нему плагин (источник истины для горячих клавиш)
-        self.current_widget = plugin.create_widget()
-        self.current_widget._modality_plugin = plugin
+        # Создаем виджет; плагин при «Сформировать» вызывает _store_report — горячие клавиши вставляют этот текст
+        self.current_widget = plugin.create_widget(on_report_generated=self._store_report)
         self.plugin_container_layout.addWidget(self.current_widget)
         
         # Выделяем выбранную кнопку
