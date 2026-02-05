@@ -115,7 +115,7 @@ class MainWindow(QMainWindow):
             btn_rentgen.setMinimumWidth(150)
             btn_rentgen.setToolTip(self._xray_plugin.get_description())
             btn_rentgen.clicked.connect(
-                lambda checked: self._on_plugin_selected(self._xray_plugin)
+                lambda checked=False: self._on_plugin_selected(self._xray_plugin)
             )
             layout.addWidget(btn_rentgen)
             self.plugin_buttons = [btn_rentgen]
@@ -130,7 +130,7 @@ class MainWindow(QMainWindow):
             btn.setMinimumHeight(40)
             btn.setMinimumWidth(150)
             btn.setToolTip(plugin.get_description())
-            btn.clicked.connect(lambda checked, p=plugin: self._on_plugin_selected(p))
+            btn.clicked.connect(lambda checked=False, p=plugin: self._on_plugin_selected(p))
             layout.addWidget(btn)
             self.plugin_buttons.append(btn)
         
