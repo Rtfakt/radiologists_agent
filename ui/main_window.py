@@ -74,11 +74,18 @@ class MainWindow(QMainWindow):
         )
         self._shortcut_conclusion.activated.connect(self._on_paste_conclusion)
 
+    def _get_visible_plugin(self) -> Optional[ModalityPlugin]:
+        """Плагин привязан к виджету при переключении — берём из виджета, а не из переменной."""
+        if self.current_widget and hasattr(self.current_widget, "_modality_plugin"):
+            return getattr(self.current_widget, "_modality_plugin")
+        return self.current_plugin
+
     def _on_paste_description(self):
         """Копирует описание в буфер и симулирует вставку в активное окно."""
-        if not self.current_plugin:
+        plugin = self._get_visible_plugin()
+        if not plugin:
             return
-        text = self.current_plugin.get_description_text()
+        text = plugin.get_description_text()
         if not text:
             return
         QApplication.clipboard().setText(text)
@@ -86,9 +93,10 @@ class MainWindow(QMainWindow):
 
     def _on_paste_conclusion(self):
         """Копирует заключение в буфер и симулирует вставку в активное окно."""
-        if not self.current_plugin:
+        plugin = self._get_visible_plugin()
+        if not plugin:
             return
-        text = self.current_plugin.get_conclusion_text()
+        text = plugin.get_conclusion_text()
         if not text:
             return
         QApplication.clipboard().setText(text)
@@ -104,16 +112,13 @@ class MainWindow(QMainWindow):
         title.setStyleSheet("font-weight: bold; font-size: 14px;")
         layout.addWidget(title)
         
-        # Явное сопоставление кнопка -> плагин (исключает ошибки захвата в замыканиях)
-        self._button_to_plugin: dict = {}
+        # Кнопки в том же порядке, что и self.plugins — плагин по индексу: self.plugins[i]
         self.plugin_buttons = []
-        
         for plugin in self.plugins:
             btn = QPushButton(plugin.get_name())
             btn.setMinimumHeight(40)
             btn.setMinimumWidth(150)
             btn.setToolTip(plugin.get_description())
-            self._button_to_plugin[id(btn)] = plugin
             btn.clicked.connect(self._on_modality_button_clicked)
             layout.addWidget(btn)
             self.plugin_buttons.append(btn)
@@ -123,12 +128,16 @@ class MainWindow(QMainWindow):
         return panel
 
     def _on_modality_button_clicked(self):
-        """Определяет плагин по нажатой кнопке и переключает модальность."""
+        """Определяет плагин по индексу нажатой кнопки и переключает модальность."""
         btn = self.sender()
-        if btn is not None and isinstance(btn, QPushButton):
-            plugin = self._button_to_plugin.get(id(btn))
-            if plugin is not None:
-                self._on_plugin_selected(plugin)
+        if btn is None:
+            return
+        try:
+            idx = self.plugin_buttons.index(btn)
+        except (ValueError, AttributeError):
+            return
+        if 0 <= idx < len(self.plugins):
+            self._on_plugin_selected(self.plugins[idx])
     
     def _create_plugin_widget_panel(self) -> QWidget:
         """Создает панель для отображения виджета плагина"""
@@ -164,8 +173,9 @@ class MainWindow(QMainWindow):
             self.current_widget.setParent(None)
             self.current_widget.deleteLater()
         
-        # Создаем новый виджет плагина
+        # Создаем новый виджет плагина и привязываем к нему плагин (источник истины для горячих клавиш)
         self.current_widget = plugin.create_widget()
+        self.current_widget._modality_plugin = plugin
         self.plugin_container_layout.addWidget(self.current_widget)
         
         # Выделяем выбранную кнопку
