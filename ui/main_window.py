@@ -104,39 +104,31 @@ class MainWindow(QMainWindow):
         title.setStyleSheet("font-weight: bold; font-size: 14px;")
         layout.addWidget(title)
         
-        # Кнопка «Рентген» (плагин конструктора рентгеновских исследований)
-        self._xray_plugin = next(
-            (p for p in self.plugins if p.get_name() == "Рентген"),
-            None,
-        )
-        if self._xray_plugin is not None:
-            btn_rentgen = QPushButton("Рентген")
-            btn_rentgen.setMinimumHeight(40)
-            btn_rentgen.setMinimumWidth(150)
-            btn_rentgen.setToolTip(self._xray_plugin.get_description())
-            btn_rentgen.clicked.connect(
-                lambda checked=False: self._on_plugin_selected(self._xray_plugin)
-            )
-            layout.addWidget(btn_rentgen)
-            self.plugin_buttons = [btn_rentgen]
-        else:
-            self.plugin_buttons = []
+        # Явное сопоставление кнопка -> плагин (исключает ошибки захвата в замыканиях)
+        self._button_to_plugin: dict = {}
+        self.plugin_buttons = []
         
-        # Остальные плагины (без дублирования рентгена)
         for plugin in self.plugins:
-            if plugin.get_name() == "Рентген":
-                continue
             btn = QPushButton(plugin.get_name())
             btn.setMinimumHeight(40)
             btn.setMinimumWidth(150)
             btn.setToolTip(plugin.get_description())
-            btn.clicked.connect(lambda checked=False, p=plugin: self._on_plugin_selected(p))
+            self._button_to_plugin[id(btn)] = plugin
+            btn.clicked.connect(self._on_modality_button_clicked)
             layout.addWidget(btn)
             self.plugin_buttons.append(btn)
         
         layout.addStretch()
         
         return panel
+
+    def _on_modality_button_clicked(self):
+        """Определяет плагин по нажатой кнопке и переключает модальность."""
+        btn = self.sender()
+        if btn is not None and isinstance(btn, QPushButton):
+            plugin = self._button_to_plugin.get(id(btn))
+            if plugin is not None:
+                self._on_plugin_selected(plugin)
     
     def _create_plugin_widget_panel(self) -> QWidget:
         """Создает панель для отображения виджета плагина"""
