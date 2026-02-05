@@ -161,7 +161,10 @@ class MainWindow(QMainWindow):
         """Обработчик выбора плагина"""
         self.current_plugin = plugin
         self.plugin_title.setText(plugin.get_name())
-        
+        # При смене модальности сбрасываем сохранённый отчёт — горячие клавиши будут вставлять только отчёт, сформированный в текущей модальности
+        self._last_description = ""
+        self._last_conclusion = ""
+
         # Удаляем предыдущий виджет
         if self.current_widget:
             self.current_widget.setParent(None)
