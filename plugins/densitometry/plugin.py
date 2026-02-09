@@ -12,10 +12,15 @@ if str(project_root) not in sys.path:
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QApplication,
-    QPushButton, QDoubleSpinBox, QGroupBox, QFormLayout, QTextEdit
+    QPushButton, QGroupBox, QFormLayout, QTextEdit
 )
 from PySide6.QtCore import Qt
 from core.plugin_base import ModalityPlugin
+from plugins.densitometry.validators import (
+    TZCriteriaLineEdit,
+    DensityLineEdit,
+    FRAXLineEdit,
+)
 
 
 class DensitometryPlugin(ModalityPlugin):
@@ -91,23 +96,9 @@ class DensitometryPlugin(ModalityPlugin):
         spine_group = QGroupBox("Позвоночник (L1-L4)")
         spine_layout = QFormLayout()
         
-        self.spine_t_score = QDoubleSpinBox()
-        self.spine_t_score.setRange(-5.0, 5.0)
-        self.spine_t_score.setSingleStep(0.1)
-        self.spine_t_score.setValue(0.0)
-        self.spine_t_score.setDecimals(2)  # 2 знака для UI
-        
-        self.spine_z_score = QDoubleSpinBox()
-        self.spine_z_score.setRange(-5.0, 5.0)
-        self.spine_z_score.setSingleStep(0.1)
-        self.spine_z_score.setValue(0.0)
-        self.spine_z_score.setDecimals(2)  # 2 знака для UI
-        
-        self.spine_bmd = QDoubleSpinBox()
-        self.spine_bmd.setRange(0.0, 2.0)
-        self.spine_bmd.setSingleStep(0.01)
-        self.spine_bmd.setValue(0.0)
-        self.spine_bmd.setDecimals(3)
+        self.spine_t_score = TZCriteriaLineEdit()
+        self.spine_z_score = TZCriteriaLineEdit()
+        self.spine_bmd = DensityLineEdit()
         
         spine_layout.addRow("T-критерий:", self.spine_t_score)
         spine_layout.addRow("Z-критерий:", self.spine_z_score)
@@ -126,29 +117,10 @@ class DensitometryPlugin(ModalityPlugin):
         femur_group = QGroupBox("Шейка бедренной кости (femoral neck)")
         femur_layout = QFormLayout()
         
-        self.femur_t_score = QDoubleSpinBox()
-        self.femur_t_score.setRange(-5.0, 5.0)
-        self.femur_t_score.setSingleStep(0.1)
-        self.femur_t_score.setValue(0.0)
-        self.femur_t_score.setDecimals(2)  # 2 знака для UI
-        
-        self.femur_z_score = QDoubleSpinBox()
-        self.femur_z_score.setRange(-5.0, 5.0)
-        self.femur_z_score.setSingleStep(0.1)
-        self.femur_z_score.setValue(0.0)
-        self.femur_z_score.setDecimals(2)  # 2 знака для UI
-        
-        self.femur_bmd = QDoubleSpinBox()
-        self.femur_bmd.setRange(0.0, 2.0)
-        self.femur_bmd.setSingleStep(0.01)
-        self.femur_bmd.setValue(0.0)
-        self.femur_bmd.setDecimals(3)
-        
-        self.femur_frax = QDoubleSpinBox()
-        self.femur_frax.setRange(0.0, 100.0)
-        self.femur_frax.setSingleStep(0.1)
-        self.femur_frax.setValue(0.0)
-        self.femur_frax.setDecimals(1)
+        self.femur_t_score = TZCriteriaLineEdit()
+        self.femur_z_score = TZCriteriaLineEdit()
+        self.femur_bmd = DensityLineEdit()
+        self.femur_frax = FRAXLineEdit()
         
         femur_layout.addRow("T-критерий:", self.femur_t_score)
         femur_layout.addRow("Z-критерий:", self.femur_z_score)
@@ -162,23 +134,9 @@ class DensitometryPlugin(ModalityPlugin):
         total_hip_group = QGroupBox("Проксимальный отдел бедра в целом (total hip)")
         total_hip_layout = QFormLayout()
         
-        self.total_hip_t_score = QDoubleSpinBox()
-        self.total_hip_t_score.setRange(-5.0, 5.0)
-        self.total_hip_t_score.setSingleStep(0.1)
-        self.total_hip_t_score.setValue(0.0)
-        self.total_hip_t_score.setDecimals(2)  # 2 знака для UI
-        
-        self.total_hip_z_score = QDoubleSpinBox()
-        self.total_hip_z_score.setRange(-5.0, 5.0)
-        self.total_hip_z_score.setSingleStep(0.1)
-        self.total_hip_z_score.setValue(0.0)
-        self.total_hip_z_score.setDecimals(2)  # 2 знака для UI
-        
-        self.total_hip_bmd = QDoubleSpinBox()
-        self.total_hip_bmd.setRange(0.0, 2.0)
-        self.total_hip_bmd.setSingleStep(0.01)
-        self.total_hip_bmd.setValue(0.0)
-        self.total_hip_bmd.setDecimals(3)
+        self.total_hip_t_score = TZCriteriaLineEdit()
+        self.total_hip_z_score = TZCriteriaLineEdit()
+        self.total_hip_bmd = DensityLineEdit()
         
         total_hip_layout.addRow("T-критерий:", self.total_hip_t_score)
         total_hip_layout.addRow("Z-критерий:", self.total_hip_z_score)
