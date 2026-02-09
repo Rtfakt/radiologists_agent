@@ -67,30 +67,19 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(plugin_panel)
 
     def _setup_hotkeys(self):
-        """Горячие клавиши: Ctrl+Shift+S — вставить описание, Ctrl+Shift+D — вставить заключение."""
-        self._shortcut_description = QShortcut(
-            QKeySequence("Ctrl+Shift+S"), self, context=Qt.ApplicationShortcut
+        """Горячая клавиша: Ctrl+Shift+V — вставить сформированное заключение."""
+        self._shortcut_paste_conclusion = QShortcut(
+            QKeySequence("Ctrl+Shift+V"), self, context=Qt.ApplicationShortcut
         )
-        self._shortcut_description.activated.connect(self._on_paste_description)
-        self._shortcut_conclusion = QShortcut(
-            QKeySequence("Ctrl+Shift+D"), self, context=Qt.ApplicationShortcut
-        )
-        self._shortcut_conclusion.activated.connect(self._on_paste_conclusion)
+        self._shortcut_paste_conclusion.activated.connect(self._on_paste_conclusion)
 
     def _store_report(self, description: str, conclusion: str):
-        """Вызывается плагином при нажатии «Сформировать»/«Сформировать отчёт» — для горячих клавиш."""
+        """Вызывается плагином при нажатии «Сформировать»/«Сформировать отчёт» — для Ctrl+Shift+V."""
         self._last_description = description or ""
         self._last_conclusion = conclusion or ""
 
-    def _on_paste_description(self):
-        """Вставляет последнее сохранённое описание (после «Сформировать» в любой модальности)."""
-        if not self._last_description:
-            return
-        QApplication.clipboard().setText(self._last_description)
-        _simulate_paste()
-
     def _on_paste_conclusion(self):
-        """Вставляет последнее сохранённое заключение (после «Сформировать» в любой модальности)."""
+        """Вставляет сформированное заключение по Ctrl+Shift+V."""
         if not self._last_conclusion:
             return
         QApplication.clipboard().setText(self._last_conclusion)

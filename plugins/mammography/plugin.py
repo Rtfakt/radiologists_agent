@@ -11,9 +11,8 @@ if str(project_root) not in sys.path:
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QApplication,
-    QPushButton, QButtonGroup, QGroupBox, QTextEdit
+    QPushButton, QButtonGroup, QGroupBox, QTextEdit, QComboBox
 )
-from PySide6.QtGui import QShortcut, QKeySequence
 import re
 from core.plugin_base import ModalityPlugin
 
@@ -37,6 +36,18 @@ class MammographyPlugin(ModalityPlugin):
         self.pathology_key = "норма"
         self.side = "правая"
 
+        self.localizations = [
+            "В верхне-наружном квадранте",
+            "В верхне-внутреннем квадранте",
+            "В нижне-наружном квадранте",
+            "В нижне-внутреннем квадранте",
+            "На границе верхних квадрантов",
+            "На границе нижних квадрантов",
+            "На границе внутренних квадрантов",
+            "На границе наружных квадрантов",
+        ]
+        self.localization = self.localizations[0]
+
         self.densities = _load_json("densities.json")
         self.pathologies = _load_json("pathologies.json")
 
@@ -55,6 +66,10 @@ class MammographyPlugin(ModalityPlugin):
         """Возвращает текст описания плотности для выбранной буквы."""
         d = self.densities.get(self.density, {})
         return d.get("description", "")
+
+    def _apply_localization_to_description(self, text: str) -> str:
+        """Подставляет выбранную локализацию вместо плейсхолдера {локализация}."""
+        return text.replace("{локализация}", self.localization)
 
     def _get_base_description_for_side(self, side: str) -> str:
         """Базовое описание для стороны из патологии «норма» с подстановкой плотности."""
@@ -76,6 +91,8 @@ class MammographyPlugin(ModalityPlugin):
                 repl = pathology["description_replacements"].get(side, {})
                 search_s = repl.get("search", "")
                 replace_s = repl.get("replace", "")
+                if pathology.get("requires_localization"):
+                    replace_s = self._apply_localization_to_description(replace_s)
                 if search_s and replace_s:
                     base = base.replace(search_s, replace_s)
             return base
@@ -214,16 +231,22 @@ class MammographyPlugin(ModalityPlugin):
         right_column.addWidget(self.side_group)
         self._update_side_group_visibility()
 
+        self.localization_group = QGroupBox("Локализация")
+        localization_layout = QVBoxLayout()
+        self.localization_combo = QComboBox()
+        self.localization_combo.addItems(self.localizations)
+        self.localization_combo.setCurrentIndex(0)
+        self.localization_combo.currentIndexChanged.connect(self._on_localization_changed)
+        localization_layout.addWidget(self.localization_combo)
+        self.localization_group.setLayout(localization_layout)
+        self.localization_group.setVisible(False)
+        right_column.addWidget(self.localization_group)
+        self._update_localization_group_visibility()
+
         right_column.addStretch()
 
         main_layout.addLayout(left_column, 2)
         main_layout.addLayout(right_column, 1)
-
-        # Горячие клавиши: Ctrl+Alt+S — скопировать описание, Ctrl+Alt+D — скопировать заключение
-        self._shortcut_copy_desc = QShortcut(QKeySequence("Ctrl+Alt+S"), widget)
-        self._shortcut_copy_desc.activated.connect(self._copy_description)
-        self._shortcut_copy_conc = QShortcut(QKeySequence("Ctrl+Alt+D"), widget)
-        self._shortcut_copy_conc.activated.connect(self._copy_conclusion)
 
         return widget
 
@@ -231,6 +254,17 @@ class MammographyPlugin(ModalityPlugin):
         """Показывает группу «Сторона» только для патологий с requires_side."""
         pathology = self.pathologies.get(self.pathology_key, {})
         self.side_group.setVisible(bool(pathology.get("requires_side")))
+
+    def _update_localization_group_visibility(self):
+        """Показывает группу «Локализация» только для патологий с requires_localization."""
+        if not hasattr(self, "localization_group"):
+            return
+        pathology = self.pathologies.get(self.pathology_key, {})
+        visible = bool(pathology.get("requires_localization"))
+        self.localization_group.setVisible(visible)
+        if visible:
+            self.localization_combo.setCurrentIndex(0)
+            self.localization = self.localizations[0]
 
     def _on_density_changed(self, button: QPushButton):
         self.density = button.text()
@@ -240,6 +274,10 @@ class MammographyPlugin(ModalityPlugin):
         if key is not None:
             self.pathology_key = key
         self._update_side_group_visibility()
+        self._update_localization_group_visibility()
+
+    def _on_localization_changed(self, index: int):
+        self.localization = self.localization_combo.currentText()
 
     def _on_side_changed(self, button: QPushButton):
         self.side = "правая" if button.text() == "Правая" else "левая"
