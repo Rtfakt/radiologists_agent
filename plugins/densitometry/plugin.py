@@ -57,6 +57,18 @@ class DensitometryPlugin(ModalityPlugin):
         spine_text_group.setLayout(spine_text_layout)
         left_column.addWidget(spine_text_group)
         
+        # Кнопки копирования для позвоночника
+        spine_copy_btns = QHBoxLayout()
+        self.spine_copy_desc_btn = QPushButton("Копировать описание позвоночника")
+        self.spine_copy_desc_btn.setMinimumHeight(36)
+        self.spine_copy_desc_btn.clicked.connect(self._copy_spine_description)
+        self.spine_copy_conc_btn = QPushButton("Копировать заключение позвоночника")
+        self.spine_copy_conc_btn.setMinimumHeight(36)
+        self.spine_copy_conc_btn.clicked.connect(self._copy_spine_conclusion)
+        spine_copy_btns.addWidget(self.spine_copy_desc_btn)
+        spine_copy_btns.addWidget(self.spine_copy_conc_btn)
+        left_column.addLayout(spine_copy_btns)
+        
         # Текстовое поле для бедренной кости
         femur_text_group = QGroupBox("Текст заключения - Бедренная кость")
         femur_text_layout = QVBoxLayout()
@@ -68,6 +80,18 @@ class DensitometryPlugin(ModalityPlugin):
         
         femur_text_group.setLayout(femur_text_layout)
         left_column.addWidget(femur_text_group)
+        
+        # Кнопки копирования для бедра
+        femur_copy_btns = QHBoxLayout()
+        self.femur_copy_desc_btn = QPushButton("Копировать описание бедра")
+        self.femur_copy_desc_btn.setMinimumHeight(36)
+        self.femur_copy_desc_btn.clicked.connect(self._copy_femur_description)
+        self.femur_copy_conc_btn = QPushButton("Копировать заключение бедра")
+        self.femur_copy_conc_btn.setMinimumHeight(36)
+        self.femur_copy_conc_btn.clicked.connect(self._copy_femur_conclusion)
+        femur_copy_btns.addWidget(self.femur_copy_desc_btn)
+        femur_copy_btns.addWidget(self.femur_copy_conc_btn)
+        left_column.addLayout(femur_copy_btns)
         
         # Кнопка для формирования всего отчета целиком
         self.generate_all_btn = QPushButton("Сформировать целиком")
@@ -298,6 +322,46 @@ class DensitometryPlugin(ModalityPlugin):
                 parts.append(conc)
         return "\n\n".join(parts)
     
+    def _copy_spine_description(self):
+        """Копирует в буфер только описание позвоночника."""
+        text = self.spine_text_edit.toPlainText().strip()
+        if not text:
+            self._show_error_tooltip(self.spine_copy_desc_btn, "Текстовое поле позвоночника пустое")
+            return
+        self._clear_error_tooltip(self.spine_copy_desc_btn)
+        description, _ = self._split_description_conclusion(text)
+        QApplication.clipboard().setText(description)
+
+    def _copy_spine_conclusion(self):
+        """Копирует в буфер только заключение позвоночника."""
+        text = self.spine_text_edit.toPlainText().strip()
+        if not text:
+            self._show_error_tooltip(self.spine_copy_conc_btn, "Текстовое поле позвоночника пустое")
+            return
+        self._clear_error_tooltip(self.spine_copy_conc_btn)
+        _, conclusion = self._split_description_conclusion(text)
+        QApplication.clipboard().setText(conclusion)
+
+    def _copy_femur_description(self):
+        """Копирует в буфер только описание бедренной кости."""
+        text = self.femur_text_edit.toPlainText().strip()
+        if not text:
+            self._show_error_tooltip(self.femur_copy_desc_btn, "Текстовое поле бедра пустое")
+            return
+        self._clear_error_tooltip(self.femur_copy_desc_btn)
+        description, _ = self._split_description_conclusion(text)
+        QApplication.clipboard().setText(description)
+
+    def _copy_femur_conclusion(self):
+        """Копирует в буфер только заключение бедренной кости."""
+        text = self.femur_text_edit.toPlainText().strip()
+        if not text:
+            self._show_error_tooltip(self.femur_copy_conc_btn, "Текстовое поле бедра пустое")
+            return
+        self._clear_error_tooltip(self.femur_copy_conc_btn)
+        _, conclusion = self._split_description_conclusion(text)
+        QApplication.clipboard().setText(conclusion)
+
     def _copy_description(self):
         """Копирует в буфер только описание."""
         QApplication.clipboard().setText(self._get_combined_description())
