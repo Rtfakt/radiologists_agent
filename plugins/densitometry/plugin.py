@@ -238,6 +238,27 @@ class DensitometryPlugin(ModalityPlugin):
         """Очищает tooltip кнопки"""
         button.setToolTip("")
     
+    def _clear_spine_input_fields(self):
+        """Очищает поля ввода позвоночника (T, Z, костная масса)."""
+        self.spine_t_score.setText("")
+        self.spine_z_score.setText("")
+        self.spine_bmd.setText("")
+    
+    def _clear_femur_input_fields(self):
+        """Очищает поля ввода тазобедренного сустава (шейка + total hip + FRAX)."""
+        self.femur_t_score.setText("")
+        self.femur_z_score.setText("")
+        self.femur_bmd.setText("")
+        self.femur_frax.setText("")
+        self.total_hip_t_score.setText("")
+        self.total_hip_z_score.setText("")
+        self.total_hip_bmd.setText("")
+    
+    def _clear_all_input_fields(self):
+        """Очищает все поля ввода (позвоночник и тазобедренный сустав)."""
+        self._clear_spine_input_fields()
+        self._clear_femur_input_fields()
+    
     def _split_description_conclusion(self, text: str) -> tuple[str, str]:
         """Разбивает текст блока на описание и заключение по маркеру «Заключение.» / «Заключение:»."""
         if not text or not text.strip():
@@ -318,6 +339,7 @@ class DensitometryPlugin(ModalityPlugin):
         full_text = f"{description}\n\n{conclusion}"
         
         self.spine_text_edit.setPlainText(full_text)
+        self._clear_spine_input_fields()
         QApplication.clipboard().setText(description)
         if getattr(self, "_on_report_generated", None):
             self._on_report_generated(description, conclusion)
@@ -357,6 +379,7 @@ class DensitometryPlugin(ModalityPlugin):
         full_text = f"{description}\n\n{conclusion}"
         
         self.femur_text_edit.setPlainText(full_text)
+        self._clear_femur_input_fields()
         QApplication.clipboard().setText(description)
         if getattr(self, "_on_report_generated", None):
             self._on_report_generated(description, conclusion)
@@ -413,6 +436,7 @@ class DensitometryPlugin(ModalityPlugin):
         femur_conc = f"Заключение: Проксимальный отдел бедра в целом: {total_hip_diagnosis}. Шейка бедренной кости: {femur_diagnosis}."
         conclusion = f"{spine_conc}\n\n{femur_conc}" if spine_conc else femur_conc
         
+        self._clear_all_input_fields()
         QApplication.clipboard().setText(description)
         if getattr(self, "_on_report_generated", None):
             self._on_report_generated(description, conclusion)
