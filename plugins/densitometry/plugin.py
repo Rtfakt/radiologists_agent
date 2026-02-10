@@ -99,18 +99,6 @@ class DensitometryPlugin(ModalityPlugin):
         self.generate_all_btn.clicked.connect(self._generate_all_text)
         left_column.addWidget(self.generate_all_btn)
         
-        # Кнопки копирования
-        copy_btns = QHBoxLayout()
-        btn_copy_desc = QPushButton("Скопировать описание")
-        btn_copy_desc.setMinimumHeight(36)
-        btn_copy_desc.clicked.connect(self._copy_description)
-        btn_copy_conc = QPushButton("Скопировать заключение")
-        btn_copy_conc.setMinimumHeight(36)
-        btn_copy_conc.clicked.connect(self._copy_conclusion)
-        copy_btns.addWidget(btn_copy_desc)
-        copy_btns.addWidget(btn_copy_conc)
-        left_column.addLayout(copy_btns)
-        
         left_column.addStretch()
         
         # Правая колонка: поля ввода и кнопки
