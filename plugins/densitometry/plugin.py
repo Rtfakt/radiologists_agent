@@ -408,6 +408,8 @@ class DensitometryPlugin(ModalityPlugin):
         
         self.spine_text_edit.setPlainText(full_text)
         self._clear_spine_input_fields()
+        if self.femur_text_edit.toPlainText().strip():
+            self.femur_text_edit.clear()
         QApplication.clipboard().setText(description)
         if getattr(self, "_on_report_generated", None):
             self._on_report_generated(description, conclusion)
@@ -450,6 +452,8 @@ class DensitometryPlugin(ModalityPlugin):
         
         self.femur_text_edit.setPlainText(full_text)
         self._clear_femur_input_fields()
+        if self.spine_text_edit.toPlainText().strip():
+            self.spine_text_edit.clear()
         QApplication.clipboard().setText(description)
         if getattr(self, "_on_report_generated", None):
             self._on_report_generated(description, conclusion)
