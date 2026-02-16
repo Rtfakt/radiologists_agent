@@ -148,15 +148,15 @@ class TZCriteriaLineEdit(QLineEdit):
         # Ручной ввод точки разрешён в допустимых местах — обрабатывает валидатор
         super().keyPressEvent(event)
 
-    def value(self) -> float:
-        """Возвращает числовое значение или 0.0 при пустом/некорректном вводе."""
+    def value(self) -> float | None:
+        """Возвращает числовое значение или None при пустом/некорректном вводе."""
         t = self.text().strip().replace(",", ".")
         if not t or t == "-":
-            return 0.0
+            return None
         try:
             return float(t)
         except ValueError:
-            return 0.0
+            return None
 
     def setValue(self, val: float):
         if val == 0.0:
@@ -243,15 +243,15 @@ class DensityLineEdit(QLineEdit):
                 return
         super().keyPressEvent(event)
 
-    def value(self) -> float:
-        """Возвращает числовое значение или 0.0 при пустом/некорректном вводе."""
+    def value(self) -> float | None:
+        """Возвращает числовое значение или None при пустом/некорректном вводе."""
         t = self.text().strip().replace(",", ".")
         if not t or t == ".":
-            return 0.0
+            return None
         try:
             return float(t)
         except ValueError:
-            return 0.0
+            return None
 
     def setValue(self, val: float):
         if val == 0.0:
@@ -316,16 +316,16 @@ class FRAXLineEdit(QLineEdit):
                 pass
         super().keyPressEvent(event)
 
-    def value(self) -> int:
-        """Возвращает целое значение от 0 до 100 или 0 при пустом/некорректном вводе."""
+    def value(self) -> float | None:
+        """Возвращает значение от 0 до 100 или None при пустом/некорректном вводе."""
         t = self.text().strip()
         if not t:
-            return 0
+            return None
         try:
             v = int(t)
-            return max(0, min(100, v))
+            return float(max(0, min(100, v)))
         except ValueError:
-            return 0
+            return None
 
     def setValue(self, val: int):
         self.setText(str(max(0, min(100, int(val)))))
