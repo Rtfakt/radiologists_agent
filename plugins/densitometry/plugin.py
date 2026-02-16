@@ -472,6 +472,23 @@ class DensitometryPlugin(ModalityPlugin):
             self._show_error_tooltip(self.generate_all_btn, femur_error)
             return
         
+        spine_t = self.spine_t_score.value()
+        spine_z = self.spine_z_score.value()
+        spine_type = self._get_criterion_type(spine_t, spine_z)
+        femur_t = self.femur_t_score.value()
+        femur_z = self.femur_z_score.value()
+        femur_type = self._get_criterion_type(femur_t, femur_z)
+        total_hip_t = self.total_hip_t_score.value()
+        total_hip_z = self.total_hip_z_score.value()
+        total_hip_type = self._get_criterion_type(total_hip_t, total_hip_z)
+        if spine_type and femur_type and total_hip_type:
+            if spine_type != femur_type or spine_type != total_hip_type:
+                self._show_error_tooltip(
+                    self.generate_all_btn,
+                    "Для общего отчета используйте один тип критерия: либо T, либо Z",
+                )
+                return
+
         # Очищаем tooltip при успешной валидации
         self._clear_error_tooltip(self.generate_all_btn)
         
