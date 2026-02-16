@@ -188,8 +188,18 @@ class DensitometryPlugin(ModalityPlugin):
             return (f"Z-критерий – {z_val:.1f}", z_val)
         return (None, None)
 
-    def _get_diagnosis(self, score: float) -> str:
-        """Определяет диагноз по значению критерия (T или Z) согласно классификации ВОЗ"""
+    def _get_criterion_type(self, t_val: float, z_val: float) -> Optional[str]:
+        """Возвращает тип критерия (T или Z) по введённым значениям или None."""
+        if t_val != 0.0:
+            return "T"
+        if z_val != 0.0:
+            return "Z"
+        return None
+
+    def _get_diagnosis(self, score: float, criterion_type: str = "T") -> str:
+        """Определяет диагноз по значению критерия (T или Z)."""
+        if criterion_type == "Z":
+            return "Остеопороз" if score <= -2.0 else "Норма"
         if score <= -2.5:
             return "Остеопороз"
         elif -2.5 < score <= -2.0:
@@ -235,6 +245,11 @@ class DensitometryPlugin(ModalityPlugin):
             return "Для проксимального отдела бедра (total hip) заполните костную массу и хотя бы один критерий (T или Z)"
         if total_hip_t != 0.0 and total_hip_z != 0.0:
             return "Для проксимального отдела бедра (total hip) введите либо T, либо Z критерий (не оба сразу)"
+        
+        femur_type = self._get_criterion_type(femur_t, femur_z)
+        total_hip_type = self._get_criterion_type(total_hip_t, total_hip_z)
+        if femur_type and total_hip_type and femur_type != total_hip_type:
+            return "Для бедренной кости используйте один тип критерия (либо T для обоих участков, либо Z)"
         
         return None
     
@@ -384,7 +399,8 @@ class DensitometryPlugin(ModalityPlugin):
         if criterion_str is None:
             self._show_error_tooltip(self.spine_generate_btn, "Введите либо T, либо Z критерий (не оба сразу)")
             return
-        spine_diagnosis = self._get_diagnosis(value_for_diagnosis)
+        spine_criterion_type = "T" if spine_t != 0.0 else "Z"
+        spine_diagnosis = self._get_diagnosis(value_for_diagnosis, spine_criterion_type)
         
         description = f"""Поясничный отдел позвоночника. Поясничные позвонки: L1–L4. Среднее значение МПК составило {spine_bmd:.3f} г/см². {criterion_str}"""
         conclusion = f"""Заключение. Позвоночник - {spine_diagnosis}"""
@@ -413,7 +429,8 @@ class DensitometryPlugin(ModalityPlugin):
         if femur_criterion_str is None:
             self._show_error_tooltip(self.femur_generate_btn, "Для шейки бедренной кости введите либо T, либо Z критерий (не оба сразу)")
             return
-        femur_diagnosis = self._get_diagnosis(femur_value)
+        femur_criterion_type = self._get_criterion_type(femur_t, femur_z)
+        femur_diagnosis = self._get_diagnosis(femur_value, femur_criterion_type)
         
         total_hip_t = self.total_hip_t_score.value()
         total_hip_z = self.total_hip_z_score.value()
@@ -422,7 +439,8 @@ class DensitometryPlugin(ModalityPlugin):
         if total_hip_criterion_str is None:
             self._show_error_tooltip(self.femur_generate_btn, "Для проксимального отдела бедра (total hip) введите либо T, либо Z критерий (не оба сразу)")
             return
-        total_hip_diagnosis = self._get_diagnosis(total_hip_value)
+        total_hip_criterion_type = self._get_criterion_type(total_hip_t, total_hip_z)
+        total_hip_diagnosis = self._get_diagnosis(total_hip_value, total_hip_criterion_type)
         
         description = f"""Проксимальный отдел бедра. Бедренная кость: левая.
 Шейка бедренной кости (femoral neck). Значение МПК составило {femur_bmd:.3f} г/см². {femur_criterion_str}. FRAX – {femur_frax:.1f}%
@@ -462,6 +480,7 @@ class DensitometryPlugin(ModalityPlugin):
         spine_z = self.spine_z_score.value()
         spine_bmd = self.spine_bmd.value()
         spine_criterion_str, spine_value = self._get_criterion_display_and_value(spine_t, spine_z)
+        spine_criterion_type = "T" if spine_t != 0.0 else "Z"
         spine_desc = f"""Поясничный отдел позвоночника. Поясничные позвонки: L1–L4. Среднее значение МПК составило {spine_bmd:.3f} г/см². {spine_criterion_str}""" if spine_criterion_str else ""
         
         femur_t = self.femur_t_score.value()
@@ -469,10 +488,12 @@ class DensitometryPlugin(ModalityPlugin):
         femur_bmd = self.femur_bmd.value()
         femur_frax = self.femur_frax.value()
         femur_criterion_str, femur_value = self._get_criterion_display_and_value(femur_t, femur_z)
+        femur_criterion_type = self._get_criterion_type(femur_t, femur_z)
         total_hip_t = self.total_hip_t_score.value()
         total_hip_z = self.total_hip_z_score.value()
         total_hip_bmd = self.total_hip_bmd.value()
         total_hip_criterion_str, total_hip_value = self._get_criterion_display_and_value(total_hip_t, total_hip_z)
+        total_hip_criterion_type = self._get_criterion_type(total_hip_t, total_hip_z)
         
         femur_desc = f"""Проксимальный отдел бедра. Бедренная кость: левая.
 Шейка бедренной кости (femoral neck). Значение МПК составило {femur_bmd:.3f} г/см². {femur_criterion_str}. FRAX – {femur_frax:.1f}%
@@ -480,9 +501,9 @@ class DensitometryPlugin(ModalityPlugin):
         
         description = f"{spine_desc}\n\n{femur_desc}" if spine_desc else femur_desc
         
-        spine_diagnosis = self._get_diagnosis(spine_value) if spine_criterion_str else ""
-        femur_diagnosis = self._get_diagnosis(femur_value) if femur_criterion_str else ""
-        total_hip_diagnosis = self._get_diagnosis(total_hip_value) if total_hip_criterion_str else ""
+        spine_diagnosis = self._get_diagnosis(spine_value, spine_criterion_type) if spine_criterion_str else ""
+        femur_diagnosis = self._get_diagnosis(femur_value, femur_criterion_type) if femur_criterion_str else ""
+        total_hip_diagnosis = self._get_diagnosis(total_hip_value, total_hip_criterion_type) if total_hip_criterion_str else ""
         
         spine_conc = f"Заключение. Позвоночник - {spine_diagnosis}" if spine_criterion_str else ""
         femur_conc = f"Заключение: Проксимальный отдел бедра в целом: {total_hip_diagnosis}. Шейка бедренной кости: {femur_diagnosis}."
@@ -501,7 +522,8 @@ class DensitometryPlugin(ModalityPlugin):
         criterion_str, value_for_diagnosis = self._get_criterion_display_and_value(spine_t, spine_z)
         if criterion_str is None:
             return
-        spine_diagnosis = self._get_diagnosis(value_for_diagnosis)
+        spine_criterion_type = "T" if spine_t != 0.0 else "Z"
+        spine_diagnosis = self._get_diagnosis(value_for_diagnosis, spine_criterion_type)
         
         description = f"""Поясничный отдел позвоночника. Поясничные позвонки: L1–L4. Среднее значение МПК составило {spine_bmd:.3f} г/см². {criterion_str}"""
         conclusion = f"""Заключение. Позвоночник - {spine_diagnosis}"""
@@ -518,7 +540,8 @@ class DensitometryPlugin(ModalityPlugin):
         femur_criterion_str, femur_value = self._get_criterion_display_and_value(femur_t, femur_z)
         if femur_criterion_str is None:
             return
-        femur_diagnosis = self._get_diagnosis(femur_value)
+        femur_criterion_type = self._get_criterion_type(femur_t, femur_z)
+        femur_diagnosis = self._get_diagnosis(femur_value, femur_criterion_type)
         
         total_hip_t = self.total_hip_t_score.value()
         total_hip_z = self.total_hip_z_score.value()
@@ -526,7 +549,8 @@ class DensitometryPlugin(ModalityPlugin):
         total_hip_criterion_str, total_hip_value = self._get_criterion_display_and_value(total_hip_t, total_hip_z)
         if total_hip_criterion_str is None:
             return
-        total_hip_diagnosis = self._get_diagnosis(total_hip_value)
+        total_hip_criterion_type = self._get_criterion_type(total_hip_t, total_hip_z)
+        total_hip_diagnosis = self._get_diagnosis(total_hip_value, total_hip_criterion_type)
         
         description = f"""Проксимальный отдел бедра. Бедренная кость: левая.
 Шейка бедренной кости (femoral neck). Значение МПК составило {femur_bmd:.3f} г/см². {femur_criterion_str}. FRAX – {femur_frax:.1f}%
