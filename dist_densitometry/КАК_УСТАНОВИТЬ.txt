@@ -1,0 +1,16 @@
+Установка «Конструктор заключений — Денситометрия»
+================================================
+
+1. Установите Python 3.10 или 3.11 с python.org
+
+2. Откройте терминал (командную строку) в этой папке.
+
+3. Выполните:
+   python -m venv venv
+   venv\Scripts\activate     (Windows)
+   или: source venv/bin/activate  (macOS/Linux)
+
+   pip install -r requirements.txt
+   python main.py
+
+Готово. Запускайте приложение командой: python main.py
