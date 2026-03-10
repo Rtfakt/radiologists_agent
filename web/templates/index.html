@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <title>Радиологический агент — модальности</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main class="page">
+    <header class="page__header">
+        <h1>Радиологический агент</h1>
+        <p class="page__subtitle">Выберите модальность для генерации описания и заключения.</p>
+    </header>
+
+    <section class="cards">
+        {% for p in plugins %}
+            <a class="card" href="/plugins/{{ p.id }}">
+                <h2 class="card__title">{{ p.name }}</h2>
+                <p class="card__text">{{ p.description }}</p>
+            </a>
+        {% endfor %}
+    </section>
+</main>
+</body>
+</html>
+

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <title>{{ plugin.name }} — радиологический агент</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main class="page">
+    <header class="page__header">
+        <h1>{{ plugin.name }}</h1>
+        <p class="page__subtitle">{{ plugin.description }}</p>
+        <p><a href="/">← Ко всем модальностям</a></p>
+    </header>
+
+    <section class="layout">
+        <form id="plugin-form" class="form">
+            {% if schema and schema.sections %}
+                {% for section in schema.sections %}
+                    <fieldset class="form__section">
+                        <legend class="form__section-title">{{ section.title }}</legend>
+                        {% for field in section.fields %}
+                            <label class="form__field">
+                                <span class="form__label">{{ field.label }}</span>
+                                <input
+                                        name="{{ field.id }}"
+                                        type="{{ field.type or 'text' }}"
+                                        step="{{ field.step or 'any' }}"
+                                        {% if field.min is defined %}min="{{ field.min }}"{% endif %}
+                                        {% if field.max is defined %}max="{{ field.max }}"{% endif %}
+                                />
+                            </label>
+                        {% endfor %}
+                    </fieldset>
+                {% endfor %}
+            {% else %}
+                <p>Форма для этой модальности пока не описана.</p>
+            {% endif %}
+
+            <div class="form__actions">
+                <button type="button" id="btn-description">Сформировать описание</button>
+                <button type="button" id="btn-conclusion">Сформировать заключение</button>
+                <button type="button" id="btn-report">Сформировать описание и заключение</button>
+            </div>
+        </form>
+
+        <section class="result">
+            <h2>Результат</h2>
+            <h3>Описание</h3>
+            <pre id="result-description" class="result__block"></pre>
+            <h3>Заключение</h3>
+            <pre id="result-conclusion" class="result__block"></pre>
+        </section>
+    </section>
+</main>
+
+<script>
+    const pluginId = "{{ plugin.id }}";
+
+    function formToPayload(form) {
+        const data = new FormData(form);
+        const payload = {};
+        for (const [key, value] of data.entries()) {
+            if (value === "") continue;
+            const num = Number(value.replace(",", "."));
+            payload[key] = Number.isFinite(num) ? num : value;
+        }
+        return payload;
+    }
+
+    async function callApi(path, payload) {
+        const resp = await fetch(path, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify(payload),
+        });
+        const json = await resp.json();
+        if (!resp.ok) {
+            throw new Error(json.detail || "Ошибка API");
+        }
+        return json;
+    }
+
+    const form = document.getElementById("plugin-form");
+    const outDesc = document.getElementById("result-description");
+    const outConc = document.getElementById("result-conclusion");
+
+    document.getElementById("btn-description").addEventListener("click", async () => {
+        outDesc.textContent = "";
+        const payload = formToPayload(form);
+        try {
+            const data = await callApi(`/api/plugins/${pluginId}/description`, payload);
+            outDesc.textContent = data.description || "";
+        } catch (e) {
+            outDesc.textContent = e.message;
+        }
+    });
+
+    document.getElementById("btn-conclusion").addEventListener("click", async () => {
+        outConc.textContent = "";
+        const payload = formToPayload(form);
+        try {
+            const data = await callApi(`/api/plugins/${pluginId}/conclusion`, payload);
+            outConc.textContent = data.conclusion || "";
+        } catch (e) {
+            outConc.textContent = e.message;
+        }
+    });
+
+    document.getElementById("btn-report").addEventListener("click", async () => {
+        outDesc.textContent = "";
+        outConc.textContent = "";
+        const payload = formToPayload(form);
+        try {
+            const data = await callApi(`/api/plugins/${pluginId}/report`, payload);
+            if (data.description !== undefined) {
+                outDesc.textContent = data.description || "";
+            }
+            if (data.conclusion !== undefined) {
+                outConc.textContent = data.conclusion || "";
+            }
+            if (data.text !== undefined && !data.description && !data.conclusion) {
+                outDesc.textContent = data.text || "";
+            }
+        } catch (e) {
+            outDesc.textContent = e.message;
+        }
+    });
+</script>
+</body>
+</html>
+

@@ -1,9 +1,9 @@
-"""Плагин денситометрии с улучшенной обработкой текста"""
+"""Плагин денситометрии с вынесенной бизнес‑логикой."""
 
 import sys
 import re
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TypedDict, Literal
 
 # Добавляем корневую директорию проекта в sys.path
 project_root = Path(__file__).parent.parent.parent
@@ -11,10 +11,18 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QApplication,
-    QPushButton, QGroupBox, QFormLayout, QTextEdit
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QApplication,
+    QPushButton,
+    QGroupBox,
+    QFormLayout,
+    QTextEdit,
+    QMessageBox,
 )
 from PySide6.QtCore import Qt
+
 from core.plugin_base import ModalityPlugin
 from plugins.densitometry.validators import (
     TZCriteriaLineEdit,
@@ -23,18 +31,329 @@ from plugins.densitometry.validators import (
 )
 
 
+class DensitometrySpineInput(TypedDict, total=False):
+    t_score: float | None
+    z_score: float | None
+    bmd: float | None
+
+
+class DensitometryFemurInput(TypedDict, total=False):
+    t_score: float | None
+    z_score: float | None
+    bmd: float | None
+    frax: float | None
+    total_hip_t_score: float | None
+    total_hip_z_score: float | None
+    total_hip_bmd: float | None
+
+
+class DensitometryReport(TypedDict):
+    description: str
+    conclusion: str
+
+
+CriterionType = Literal["T", "Z"]
+
+
+def _get_criterion_display_and_value(
+    t_val: Optional[float],
+    z_val: Optional[float],
+) -> tuple[Optional[str], Optional[float]]:
+    if t_val is None and z_val is None:
+        return (None, None)
+    if t_val is not None and z_val is not None:
+        return (None, None)
+    if t_val is not None:
+        return (f"Т-критерий – {t_val:.1f}", t_val)
+    if z_val is not None:
+        return (f"Z-критерий – {z_val:.1f}", z_val)
+    return (None, None)
+
+
+def _get_criterion_type(t_val: Optional[float], z_val: Optional[float]) -> Optional[CriterionType]:
+    if t_val is not None and z_val is not None:
+        return None
+    if t_val is not None:
+        return "T"
+    if z_val is not None:
+        return "Z"
+    return None
+
+
+def _get_diagnosis(score: float, criterion_type: CriterionType = "T") -> str:
+    if criterion_type == "Z":
+        return "Остеопороз" if score <= -2.0 else "Норма"
+    if score <= -2.5:
+        return "Остеопороз"
+    elif -2.5 < score <= -2.0:
+        return "Остеопения 3 ст."
+    elif -2.0 < score <= -1.5:
+        return "Остеопения 2 ст"
+    elif -1.5 < score <= -1.1:
+        return "Остеопения 1 ст"
+    else:
+        return "Норма"
+
+
+def generate_spine_report(payload: DensitometrySpineInput) -> DensitometryReport:
+    bmd = payload.get("bmd")
+    t_score = payload.get("t_score")
+    z_score = payload.get("z_score")
+
+    if bmd is None or (t_score is None and z_score is None):
+        raise ValueError(
+            "Для позвоночника заполните костную массу и хотя бы один критерий (T или Z)"
+        )
+
+    if t_score is not None and z_score is not None:
+        raise ValueError("Введите либо T, либо Z критерий (не оба сразу)")
+
+    criterion_str, value_for_diagnosis = _get_criterion_display_and_value(t_score, z_score)
+    if criterion_str is None or value_for_diagnosis is None:
+        raise ValueError("Введите либо T, либо Z критерий (не оба сразу)")
+
+    criterion_type = _get_criterion_type(t_score, z_score) or "T"
+    diagnosis = _get_diagnosis(value_for_diagnosis, criterion_type)
+
+    bmd_text = f"{bmd:.3f}" if bmd is not None else None
+    if bmd_text is not None:
+        description = (
+            "Поясничный отдел позвоночника. Поясничные позвонки: L1–L4. "
+            f"Среднее значение МПК составило {bmd_text} г/см. {criterion_str}"
+        )
+    else:
+        description = (
+            "Поясничный отдел позвоночника. Поясничные позвонки: L1–L4. "
+            f"{criterion_str}"
+        )
+
+    conclusion = f"Заключение. Позвоночник - {diagnosis}"
+    return {"description": description, "conclusion": conclusion}
+
+
+def generate_femur_report(payload: DensitometryFemurInput) -> DensitometryReport:
+    femur_bmd = payload.get("bmd")
+    femur_t = payload.get("t_score")
+    femur_z = payload.get("z_score")
+    femur_frax = payload.get("frax")
+
+    total_hip_bmd = payload.get("total_hip_bmd")
+    total_hip_t = payload.get("total_hip_t_score")
+    total_hip_z = payload.get("total_hip_z_score")
+
+    if (
+        femur_bmd is None
+        or (femur_t is None and femur_z is None)
+        or femur_frax is None
+        or total_hip_bmd is None
+        or (total_hip_t is None and total_hip_z is None)
+    ):
+        raise ValueError(
+            "Заполните поля шейки бедренной кости (T/Z, BMD, FRAX) и total hip (T/Z, BMD)"
+        )
+
+    if femur_t is not None and femur_z is not None:
+        raise ValueError("Для шейки бедренной кости введите либо T, либо Z критерий (не оба сразу)")
+
+    if total_hip_t is not None and total_hip_z is not None:
+        raise ValueError(
+            "Для проксимального отдела бедра (total hip) введите либо T, либо Z критерий (не оба сразу)"
+        )
+
+    femur_type = _get_criterion_type(femur_t, femur_z)
+    total_hip_type = _get_criterion_type(total_hip_t, total_hip_z)
+    if femur_type and total_hip_type and femur_type != total_hip_type:
+        raise ValueError(
+            "Для бедренной кости используйте один тип критерия (либо T для обоих участков, либо Z)"
+        )
+
+    femur_criterion_str, femur_value = _get_criterion_display_and_value(femur_t, femur_z)
+    if femur_criterion_str is None or femur_value is None:
+        raise ValueError(
+            "Для шейки бедренной кости введите либо T, либо Z критерий (не оба сразу)"
+        )
+    femur_criterion_type = _get_criterion_type(femur_t, femur_z) or "T"
+    femur_diagnosis = _get_diagnosis(femur_value, femur_criterion_type)
+
+    total_hip_criterion_str, total_hip_value = _get_criterion_display_and_value(
+        total_hip_t, total_hip_z
+    )
+    if total_hip_criterion_str is None or total_hip_value is None:
+        raise ValueError(
+            "Для проксимального отдела бедра (total hip) введите либо T, либо Z критерий (не оба сразу)"
+        )
+    total_hip_criterion_type = _get_criterion_type(total_hip_t, total_hip_z) or "T"
+    total_hip_diagnosis = _get_diagnosis(total_hip_value, total_hip_criterion_type)
+
+    femur_bmd_text = f"{femur_bmd:.3f}" if femur_bmd is not None else None
+    total_hip_bmd_text = f"{total_hip_bmd:.3f}" if total_hip_bmd is not None else None
+    frax_text = f"{femur_frax:.1f}%" if femur_frax is not None else None
+
+    if femur_bmd_text is not None:
+        femur_line = (
+            "Шейка бедренной кости (femoral neck). "
+            f"Значение МПК составило {femur_bmd_text} г/см. {femur_criterion_str}."
+        )
+    else:
+        femur_line = f"Шейка бедренной кости (femoral neck). {femur_criterion_str}."
+
+    if frax_text is not None:
+        femur_line = f"{femur_line} FRAX – {frax_text}"
+
+    if total_hip_bmd_text is not None:
+        total_hip_line = (
+            "Проксимальный отдел бедра в целом (total hip). "
+            f"Значение МПК составило {total_hip_bmd_text} г/см. {total_hip_criterion_str}."
+        )
+    else:
+        total_hip_line = (
+            "Проксимальный отдел бедра в целом (total hip). "
+            f"{total_hip_criterion_str}."
+        )
+
+    description = (
+        "Проксимальный отдел бедра. Бедренная кость: левая.\n"
+        f"{femur_line}\n"
+        f"{total_hip_line}"
+    )
+    conclusion = (
+        "Заключение: Проксимальный отдел бедра в целом: "
+        f"{total_hip_diagnosis}. Шейка бедренной кости: {femur_diagnosis}."
+    )
+
+    return {"description": description, "conclusion": conclusion}
+
+
 class DensitometryPlugin(ModalityPlugin):
-    """Плагин для работы с денситометрией"""
-    
+    """Плагин для работы с денситометрией."""
+
     def __init__(self):
-        pass
-        
+        self._on_report_generated = None
+
     def get_name(self) -> str:
         return "Денситометрия"
-    
+
     def get_description(self) -> str:
         return "Плагин для работы с денситометрическими исследованиями"
-    
+
+    # --- Чистая логика для использования из веб‑API ---
+
+    def generate_spine_from_dict(self, data: dict) -> DensitometryReport:
+        payload: DensitometrySpineInput = {
+            "t_score": data.get("spine_t_score"),
+            "z_score": data.get("spine_z_score"),
+            "bmd": data.get("spine_bmd"),
+        }
+        return generate_spine_report(payload)
+
+    def generate_femur_from_dict(self, data: dict) -> DensitometryReport:
+        payload: DensitometryFemurInput = {
+            "t_score": data.get("femur_t_score"),
+            "z_score": data.get("femur_z_score"),
+            "bmd": data.get("femur_bmd"),
+            "frax": data.get("femur_frax"),
+            "total_hip_t_score": data.get("total_hip_t_score"),
+            "total_hip_z_score": data.get("total_hip_z_score"),
+            "total_hip_bmd": data.get("total_hip_bmd"),
+        }
+        return generate_femur_report(payload)
+
+    def generate_all_from_dict(self, data: dict) -> DensitometryReport:
+        spine = self.generate_spine_from_dict(data)
+        femur = self.generate_femur_from_dict(data)
+        description = f"{spine['description']}\n\n{femur['description']}"
+        conclusion = f"{spine['conclusion']}\n\n{femur['conclusion']}"
+        return {"description": description, "conclusion": conclusion}
+
+    def get_form_schema(self) -> dict:
+        return {
+            "sections": [
+                {
+                    "id": "spine",
+                    "title": "Позвоночник (L1-L4)",
+                    "fields": [
+                        {
+                            "id": "spine_t_score",
+                            "label": "T-критерий",
+                            "type": "number",
+                            "step": 0.1,
+                        },
+                        {
+                            "id": "spine_z_score",
+                            "label": "Z-критерий",
+                            "type": "number",
+                            "step": 0.1,
+                        },
+                        {
+                            "id": "spine_bmd",
+                            "label": "Костная масса (г/см²)",
+                            "type": "number",
+                            "step": 0.001,
+                            "min": 0,
+                        },
+                    ],
+                },
+                {
+                    "id": "femur",
+                    "title": "Шейка бедренной кости",
+                    "fields": [
+                        {
+                            "id": "femur_t_score",
+                            "label": "T-критерий",
+                            "type": "number",
+                            "step": 0.1,
+                        },
+                        {
+                            "id": "femur_z_score",
+                            "label": "Z-критерий",
+                            "type": "number",
+                            "step": 0.1,
+                        },
+                        {
+                            "id": "femur_bmd",
+                            "label": "Костная масса (г/см²)",
+                            "type": "number",
+                            "step": 0.001,
+                            "min": 0,
+                        },
+                        {
+                            "id": "femur_frax",
+                            "label": "FRAX (%)",
+                            "type": "number",
+                            "step": 1,
+                            "min": 0,
+                            "max": 100,
+                        },
+                    ],
+                },
+                {
+                    "id": "total_hip",
+                    "title": "Проксимальный отдел бедра (total hip)",
+                    "fields": [
+                        {
+                            "id": "total_hip_t_score",
+                            "label": "T-критерий",
+                            "type": "number",
+                            "step": 0.1,
+                        },
+                        {
+                            "id": "total_hip_z_score",
+                            "label": "Z-критерий",
+                            "type": "number",
+                            "step": 0.1,
+                        },
+                        {
+                            "id": "total_hip_bmd",
+                            "label": "Костная масса (г/см²)",
+                            "type": "number",
+                            "step": 0.001,
+                            "min": 0,
+                        },
+                    ],
+                },
+            ]
+        }
+
     def create_widget(self, on_report_generated=None) -> QWidget:
         """Создает виджет с полями для T/Z-критериев и костной массы"""
         self._on_report_generated = on_report_generated
@@ -248,8 +567,8 @@ class DensitometryPlugin(ModalityPlugin):
         if total_hip_t is not None and total_hip_z is not None:
             return "Для проксимального отдела бедра (total hip) введите либо T, либо Z критерий (не оба сразу)"
         
-        femur_type = self._get_criterion_type(femur_t, femur_z)
-        total_hip_type = self._get_criterion_type(total_hip_t, total_hip_z)
+        femur_type = _get_criterion_type(femur_t, femur_z)
+        total_hip_type = _get_criterion_type(total_hip_t, total_hip_z)
         if femur_type and total_hip_type and femur_type != total_hip_type:
             return "Для бедренной кости используйте один тип критерия (либо T для обоих участков, либо Z)"
         
@@ -417,6 +736,7 @@ class DensitometryPlugin(ModalityPlugin):
         if self.femur_text_edit.toPlainText().strip():
             self.femur_text_edit.clear()
         QApplication.clipboard().setText(description)
+        QMessageBox.information(self.spine_text_edit, "Информация", "Описание добавлено в буфер обмена")
         if getattr(self, "_on_report_generated", None):
             self._on_report_generated(description, conclusion)
     
@@ -474,6 +794,7 @@ class DensitometryPlugin(ModalityPlugin):
         if self.spine_text_edit.toPlainText().strip():
             self.spine_text_edit.clear()
         QApplication.clipboard().setText(description)
+        QMessageBox.information(self.femur_text_edit, "Информация", "Описание добавлено в буфер обмена")
         if getattr(self, "_on_report_generated", None):
             self._on_report_generated(description, conclusion)
     
@@ -571,6 +892,7 @@ class DensitometryPlugin(ModalityPlugin):
         
         self._clear_all_input_fields()
         QApplication.clipboard().setText(description)
+        QMessageBox.information(self.generate_all_btn, "Информация", "Описание добавлено в буфер обмена")
         if getattr(self, "_on_report_generated", None):
             self._on_report_generated(description, conclusion)
     
